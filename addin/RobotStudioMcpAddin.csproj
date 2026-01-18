@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>RobotStudioMcpAddin</RootNamespace>
+    <AssemblyName>RobotStudioMcpAddin</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="Microsoft.CSharp" />
+
+    <!-- Newtonsoft.Json - Install via NuGet or reference directly -->
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>packages\Newtonsoft.Json.13.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+
+    <!--
+      ABB RobotStudio SDK References
+      Update these paths to match your RobotStudio installation directory.
+      Default location: C:\Program Files (x86)\ABB\RobotStudio 20XX\Bin
+    -->
+    <Reference Include="ABB.Robotics.RobotStudio">
+      <HintPath>$(ProgramFiles)\ABB\RobotStudio 2024\Bin\ABB.Robotics.RobotStudio.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="ABB.Robotics.RobotStudio.Stations">
+      <HintPath>$(ProgramFiles)\ABB\RobotStudio 2024\Bin\ABB.Robotics.RobotStudio.Stations.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="ABB.Robotics.Controllers">
+      <HintPath>$(ProgramFiles)\ABB\RobotStudio 2024\Bin\ABB.Robotics.Controllers.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="ABB.Robotics.Controllers.PC">
+      <HintPath>$(ProgramFiles)\ABB\RobotStudio 2024\Bin\ABB.Robotics.Controllers.PC.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="RobotStudioAddin.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="packages.config" />
+    <None Include="addin.xml" />
+  </ItemGroup>
+
+  <!-- Post-build event to copy DLL to RobotStudio Addins folder -->
+  <PropertyGroup>
+    <PostBuildEvent>
+      if not exist "$(LocalAppData)\ABB\RobotStudio\Addins\RobotStudioMcpAddin" mkdir "$(LocalAppData)\ABB\RobotStudio\Addins\RobotStudioMcpAddin"
+      copy "$(TargetPath)" "$(LocalAppData)\ABB\RobotStudio\Addins\RobotStudioMcpAddin\"
+      copy "$(ProjectDir)addin.xml" "$(LocalAppData)\ABB\RobotStudio\Addins\RobotStudioMcpAddin\"
+      if exist "$(TargetDir)Newtonsoft.Json.dll" copy "$(TargetDir)Newtonsoft.Json.dll" "$(LocalAppData)\ABB\RobotStudio\Addins\RobotStudioMcpAddin\"
+    </PostBuildEvent>
+  </PropertyGroup>
+
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

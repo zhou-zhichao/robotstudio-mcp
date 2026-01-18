@@ -1,0 +1,37 @@
+{
+  "name": "robotstudio-mcp",
+  "version": "1.0.0",
+  "description": "MCP Server for ABB RobotStudio integration",
+  "main": "dist/server.js",
+  "type": "module",
+  "bin": {
+    "robotstudio-mcp": "./dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsc --watch",
+    "clean": "rimraf dist",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "robotstudio",
+    "abb",
+    "robotics",
+    "automation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

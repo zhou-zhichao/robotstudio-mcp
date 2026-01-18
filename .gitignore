@@ -1,0 +1,34 @@
+# Node.js
+node_modules/
+dist/
+*.log
+npm-debug.log*
+
+# C# / .NET
+bin/
+obj/
+packages/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+
+# Build outputs
+*.dll
+*.pdb
+*.exe
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
