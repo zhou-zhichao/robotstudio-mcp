@@ -10,6 +10,8 @@ using ABB.Robotics.RobotStudio;
 using ABB.Robotics.RobotStudio.Stations;
 using ABB.Robotics.Controllers;
 using ABB.Robotics.Controllers.MotionDomain;
+using ABB.Robotics.Controllers.RapidDomain;
+using ABB.Robotics.Controllers.EventLogDomain;
 using Newtonsoft.Json;
 
 namespace RobotStudioMcpAddin
@@ -97,20 +99,17 @@ namespace RobotStudioMcpAddin
         {
             try
             {
-                client.ReceiveTimeout = 5000;
+                client.ReceiveTimeout = 15000;
                 client.SendTimeout = 5000;
 
                 using (client)
                 using (var stream = client.GetStream())
                 {
-                    // Read HTTP request
                     var requestLine = "";
                     var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                    var headerBuilder = new StringBuilder();
-                    var buffer = new byte[8192];
+                    var buffer = new byte[65536];
                     var received = new StringBuilder();
 
-                    // Read until we find end of headers (\r\n\r\n)
                     int bytesRead;
                     while ((bytesRead = stream.Read(buffer, 0, buffer.Length)) > 0)
                     {
@@ -149,7 +148,6 @@ namespace RobotStudioMcpAddin
                         }
                     }
 
-                    // Read remaining body if Content-Length is specified
                     string clStr;
                     int contentLength;
                     if (headers.TryGetValue("Content-Length", out clStr) && int.TryParse(clStr, out contentLength))
@@ -162,7 +160,6 @@ namespace RobotStudioMcpAddin
                         }
                     }
 
-                    // Parse request line: "GET /path HTTP/1.1"
                     var parts = requestLine.Split(' ');
                     if (parts.Length < 2)
                     {
@@ -173,18 +170,15 @@ namespace RobotStudioMcpAddin
                     var method = parts[0].ToUpperInvariant();
                     var path = parts[1].ToLowerInvariant();
 
-                    // Remove query string
                     var qIdx = path.IndexOf('?');
                     if (qIdx >= 0) path = path.Substring(0, qIdx);
 
-                    // Handle CORS preflight
                     if (method == "OPTIONS")
                     {
                         SendResponse(stream, 200, "");
                         return;
                     }
 
-                    // Route request
                     string responseJson;
                     int statusCode = 200;
 
@@ -205,13 +199,29 @@ namespace RobotStudioMcpAddin
                             if (method != "GET") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
                             responseJson = HandleGetStatus(out statusCode);
                             break;
+                        case "/rapid/upload":
+                            if (method != "POST") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
+                            responseJson = HandleRapidUpload(body, out statusCode);
+                            break;
+                        case "/rapid/execute":
+                            if (method != "POST") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
+                            responseJson = HandleRapidExecute(body, out statusCode);
+                            break;
+                        case "/rapid/status":
+                            if (method != "GET") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
+                            responseJson = HandleRapidStatus(out statusCode);
+                            break;
+                        case "/rapid/errors":
+                            if (method != "GET") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
+                            responseJson = HandleGetErrors(out statusCode);
+                            break;
                         default:
                             statusCode = 404;
                             responseJson = JsonConvert.SerializeObject(new ErrorResponse
                             {
                                 Success = false,
                                 Error = "Not Found",
-                                Message = "Endpoint '" + path + "' not found. Available: /joints, /simulation, /status, /health"
+                                Message = "Endpoint '" + path + "' not found. Available: /health, /joints, /status, /simulation, /rapid/upload, /rapid/execute, /rapid/status, /rapid/errors"
                             });
                             break;
                     }
@@ -227,7 +237,19 @@ namespace RobotStudioMcpAddin
 
         private static void SendResponse(NetworkStream stream, int statusCode, string jsonBody)
         {
-            var statusText = statusCode == 200 ? "OK" : statusCode == 404 ? "Not Found" : statusCode == 400 ? "Bad Request" : statusCode == 405 ? "Method Not Allowed" : "Error";
+            string statusText;
+            switch (statusCode)
+            {
+                case 200: statusText = "OK"; break;
+                case 400: statusText = "Bad Request"; break;
+                case 404: statusText = "Not Found"; break;
+                case 405: statusText = "Method Not Allowed"; break;
+                case 409: statusText = "Conflict"; break;
+                case 422: statusText = "Unprocessable Entity"; break;
+                case 500: statusText = "Internal Server Error"; break;
+                default: statusText = "Error"; break;
+            }
+
             var bodyBytes = Encoding.UTF8.GetBytes(jsonBody);
 
             var sb = new StringBuilder();
@@ -245,6 +267,8 @@ namespace RobotStudioMcpAddin
             stream.Write(bodyBytes, 0, bodyBytes.Length);
             stream.Flush();
         }
+
+        #region Existing Handlers
 
         private static string HandleGetJoints(out int statusCode)
         {
@@ -436,6 +460,414 @@ namespace RobotStudioMcpAddin
                 return false;
             }
         }
+
+        #endregion
+
+        #region RAPID Handlers
+
+        private static string HandleRapidUpload(string body, out int statusCode)
+        {
+            try
+            {
+                var request = JsonConvert.DeserializeObject<RapidUploadRequest>(body);
+                if (request == null || string.IsNullOrEmpty(request.Code))
+                {
+                    statusCode = 400;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Invalid Request", Message = "Request body must contain 'code' field with RAPID source code." });
+                }
+
+                string moduleName = string.IsNullOrEmpty(request.ModuleName) ? "McpModule" : request.ModuleName;
+                string taskName = string.IsNullOrEmpty(request.TaskName) ? "T_ROB1" : request.TaskName;
+                bool replace = request.ReplaceExisting;
+
+                string fileName = moduleName;
+                if (!fileName.EndsWith(".mod", StringComparison.OrdinalIgnoreCase))
+                    fileName = fileName + ".mod";
+
+                var station = Project.ActiveProject as Station;
+                if (station == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Active Station", Message = "No station is currently open in RobotStudio." });
+                }
+
+                Controller controller = TryGetController(station);
+                if (controller == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Controller", Message = "No virtual controller found in the station." });
+                }
+
+                using (controller)
+                {
+                    if (controller.Rapid.ExecutionStatus == ExecutionStatus.Running)
+                    {
+                        statusCode = 409;
+                        return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Execution Running", Message = "Cannot upload module while RAPID execution is running. Stop execution first." });
+                    }
+
+                    string tempFile = Path.Combine(Path.GetTempPath(), fileName);
+                    File.WriteAllText(tempFile, request.Code, Encoding.UTF8);
+
+                    try
+                    {
+                        string homePath = controller.GetEnvironmentVariable("HOME");
+                        string controllerFilePath = homePath + "/" + fileName;
+                        controller.FileSystem.PutFile(tempFile, controllerFilePath, true);
+
+                        ABB.Robotics.Controllers.RapidDomain.Task rapidTask = controller.Rapid.GetTask(taskName);
+                        if (rapidTask == null)
+                        {
+                            statusCode = 404;
+                            return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Task Not Found", Message = "RAPID task '" + taskName + "' not found." });
+                        }
+
+                        RapidLoadMode loadMode = replace ? RapidLoadMode.Replace : RapidLoadMode.Add;
+                        bool loadSuccess;
+                        using (Mastership.Request(controller.Rapid))
+                        {
+                            loadSuccess = rapidTask.LoadModuleFromFile(controllerFilePath, loadMode);
+                        }
+
+                        if (!loadSuccess)
+                        {
+                            string errorDetails = ReadRecentErrors(controller, 5);
+                            statusCode = 422;
+                            return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Module Load Failed", Message = "Failed to load module. Errors: " + errorDetails });
+                        }
+
+                        statusCode = 200;
+                        return JsonConvert.SerializeObject(new RapidUploadResponse
+                        {
+                            Success = true,
+                            Message = "Module '" + moduleName + "' loaded successfully into task '" + taskName + "'.",
+                            ModuleName = moduleName,
+                            TaskName = taskName
+                        }, Formatting.Indented);
+                    }
+                    finally
+                    {
+                        try { File.Delete(tempFile); }
+                        catch { }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                statusCode = 500;
+                return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Upload Error", Message = ex.Message });
+            }
+        }
+
+        private static string HandleRapidExecute(string body, out int statusCode)
+        {
+            try
+            {
+                var request = JsonConvert.DeserializeObject<RapidExecuteRequest>(body);
+                if (request == null || string.IsNullOrEmpty(request.Action))
+                {
+                    statusCode = 400;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Invalid Request", Message = "Request body must contain 'action' field with value 'start', 'stop', or 'resetpp'." });
+                }
+
+                string action = request.Action.ToLowerInvariant();
+                string taskName = string.IsNullOrEmpty(request.TaskName) ? "T_ROB1" : request.TaskName;
+
+                var station = Project.ActiveProject as Station;
+                if (station == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Active Station", Message = "No station is currently open in RobotStudio." });
+                }
+
+                Controller controller = TryGetController(station);
+                if (controller == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Controller", Message = "No virtual controller found in the station." });
+                }
+
+                using (controller)
+                {
+                    string message;
+
+                    switch (action)
+                    {
+                        case "start":
+                        {
+                            RegainMode regain = RegainMode.Continue;
+                            ExecutionMode execMode = ExecutionMode.Continuous;
+                            ExecutionCycle cycle = ExecutionCycle.Once;
+
+                            if (!string.IsNullOrEmpty(request.ExecutionMode))
+                            {
+                                string em = request.ExecutionMode.ToLowerInvariant();
+                                if (em == "step_over") execMode = ExecutionMode.StepOver;
+                                else if (em == "step_in") execMode = ExecutionMode.StepIn;
+                            }
+
+                            if (!string.IsNullOrEmpty(request.Cycle))
+                            {
+                                string c = request.Cycle.ToLowerInvariant();
+                                if (c == "forever") cycle = ExecutionCycle.Forever;
+                            }
+
+                            using (Mastership.Request(controller.Rapid))
+                            {
+                                StartResult result = controller.Rapid.Start(regain, execMode, cycle, StartCheck.CallChain, true);
+                                if (result != StartResult.Ok)
+                                {
+                                    statusCode = 422;
+                                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Start Failed", Message = "RAPID start returned: " + result.ToString() });
+                                }
+                            }
+                            message = "RAPID execution started.";
+                            break;
+                        }
+                        case "stop":
+                        {
+                            StopMode stopMode = StopMode.Instruction;
+
+                            if (!string.IsNullOrEmpty(request.StopMode))
+                            {
+                                string sm = request.StopMode.ToLowerInvariant();
+                                if (sm == "cycle") stopMode = StopMode.Cycle;
+                                else if (sm == "immediate") stopMode = StopMode.Immediate;
+                            }
+
+                            using (Mastership.Request(controller.Rapid))
+                            {
+                                controller.Rapid.Stop(stopMode);
+                            }
+                            message = "RAPID execution stopped.";
+                            break;
+                        }
+                        case "resetpp":
+                        {
+                            ABB.Robotics.Controllers.RapidDomain.Task rapidTask = controller.Rapid.GetTask(taskName);
+                            if (rapidTask == null)
+                            {
+                                statusCode = 404;
+                                return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Task Not Found", Message = "RAPID task '" + taskName + "' not found." });
+                            }
+
+                            using (Mastership.Request(controller.Rapid))
+                            {
+                                rapidTask.ResetProgramPointer();
+                            }
+                            message = "Program pointer reset to main entry point in task '" + taskName + "'.";
+                            break;
+                        }
+                        default:
+                            statusCode = 400;
+                            return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Invalid Action", Message = "Unknown action '" + action + "'. Use 'start', 'stop', or 'resetpp'." });
+                    }
+
+                    statusCode = 200;
+                    return JsonConvert.SerializeObject(new RapidExecuteResponse
+                    {
+                        Success = true,
+                        Message = message,
+                        ExecutionStatus = controller.Rapid.ExecutionStatus.ToString()
+                    }, Formatting.Indented);
+                }
+            }
+            catch (Exception ex)
+            {
+                statusCode = 500;
+                return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Execution Control Error", Message = ex.Message });
+            }
+        }
+
+        private static string HandleRapidStatus(out int statusCode)
+        {
+            try
+            {
+                var station = Project.ActiveProject as Station;
+                if (station == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Active Station", Message = "No station is currently open in RobotStudio." });
+                }
+
+                Controller controller = TryGetController(station);
+                if (controller == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Controller", Message = "No virtual controller found in the station." });
+                }
+
+                using (controller)
+                {
+                    ABB.Robotics.Controllers.RapidDomain.Task[] tasks = controller.Rapid.GetTasks();
+                    var taskDataList = new List<TaskStatusData>();
+
+                    for (int i = 0; i < tasks.Length; i++)
+                    {
+                        var t = tasks[i];
+                        var taskData = new TaskStatusData
+                        {
+                            Name = t.Name,
+                            ExecutionStatus = t.ExecutionStatus.ToString(),
+                            Enabled = t.Enabled,
+                            Type = t.Type.ToString()
+                        };
+
+                        try
+                        {
+                            var pp = t.ProgramPointer;
+                            if (pp != null)
+                            {
+                                taskData.ProgramPointer = new ProgramPointerData
+                                {
+                                    Module = pp.Module,
+                                    Routine = pp.Routine,
+                                    Range = pp.Range.ToString()
+                                };
+                            }
+                        }
+                        catch { }
+
+                        try
+                        {
+                            var mp = t.MotionPointer;
+                            if (mp != null)
+                            {
+                                taskData.MotionPointer = new ProgramPointerData
+                                {
+                                    Module = mp.Module,
+                                    Routine = mp.Routine,
+                                    Range = mp.Range.ToString()
+                                };
+                            }
+                        }
+                        catch { }
+
+                        taskDataList.Add(taskData);
+                    }
+
+                    statusCode = 200;
+                    return JsonConvert.SerializeObject(new RapidStatusResponse
+                    {
+                        Success = true,
+                        ControllerExecutionStatus = controller.Rapid.ExecutionStatus.ToString(),
+                        Tasks = taskDataList
+                    }, Formatting.Indented);
+                }
+            }
+            catch (Exception ex)
+            {
+                statusCode = 500;
+                return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "RAPID Status Error", Message = ex.Message });
+            }
+        }
+
+        private static string HandleGetErrors(out int statusCode)
+        {
+            try
+            {
+                var station = Project.ActiveProject as Station;
+                if (station == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Active Station", Message = "No station is currently open in RobotStudio." });
+                }
+
+                Controller controller = TryGetController(station);
+                if (controller == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Controller", Message = "No virtual controller found in the station." });
+                }
+
+                using (controller)
+                {
+                    var messages = new List<EventLogMessageData>();
+                    EventLogCategory[] categories = controller.EventLog.GetCategories();
+
+                    for (int c = 0; c < categories.Length; c++)
+                    {
+                        EventLogCategory cat = categories[c];
+                        try
+                        {
+                            foreach (EventLogMessage msg in cat.Messages)
+                            {
+                                messages.Add(new EventLogMessageData
+                                {
+                                    SequenceNumber = msg.SequenceNumber,
+                                    Timestamp = msg.Timestamp.ToString("o"),
+                                    Title = msg.Title,
+                                    Body = msg.Body,
+                                    CategoryName = cat.Name,
+                                    Type = msg.Type.ToString()
+                                });
+                            }
+                        }
+                        catch { }
+                    }
+
+                    messages.Sort(delegate(EventLogMessageData a, EventLogMessageData b) {
+                        return b.SequenceNumber.CompareTo(a.SequenceNumber);
+                    });
+
+                    if (messages.Count > 50)
+                    {
+                        messages = messages.GetRange(0, 50);
+                    }
+
+                    statusCode = 200;
+                    return JsonConvert.SerializeObject(new EventLogResponse
+                    {
+                        Success = true,
+                        Messages = messages
+                    }, Formatting.Indented);
+                }
+            }
+            catch (Exception ex)
+            {
+                statusCode = 500;
+                return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Event Log Error", Message = ex.Message });
+            }
+        }
+
+        private static string ReadRecentErrors(Controller controller, int maxMessages)
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                EventLogCategory[] categories = controller.EventLog.GetCategories();
+                int count = 0;
+
+                for (int c = 0; c < categories.Length && count < maxMessages; c++)
+                {
+                    EventLogCategory cat = categories[c];
+                    try
+                    {
+                        foreach (EventLogMessage msg in cat.Messages)
+                        {
+                            sb.Append("[").Append(cat.Name).Append("] ");
+                            sb.Append(msg.Title);
+                            if (!string.IsNullOrEmpty(msg.Body))
+                            {
+                                sb.Append(": ").Append(msg.Body);
+                            }
+                            sb.Append("; ");
+                            count++;
+                            if (count >= maxMessages) break;
+                        }
+                    }
+                    catch { }
+                }
+
+                return sb.Length > 0 ? sb.ToString() : "No error messages found.";
+            }
+            catch (Exception ex)
+            {
+                return "Could not read event log: " + ex.Message;
+            }
+        }
+
+        #endregion
     }
 
     #region Data Transfer Objects
@@ -482,6 +914,82 @@ namespace RobotStudioMcpAddin
         [JsonProperty("success")] public bool Success { get; set; }
         [JsonProperty("error")] public string Error { get; set; }
         [JsonProperty("message")] public string Message { get; set; }
+    }
+
+    // RAPID Upload
+    public class RapidUploadRequest
+    {
+        [JsonProperty("code")] public string Code { get; set; }
+        [JsonProperty("moduleName")] public string ModuleName { get; set; }
+        [JsonProperty("taskName")] public string TaskName { get; set; }
+        [JsonProperty("replaceExisting")] public bool ReplaceExisting { get; set; }
+    }
+
+    public class RapidUploadResponse
+    {
+        [JsonProperty("success")] public bool Success { get; set; }
+        [JsonProperty("message")] public string Message { get; set; }
+        [JsonProperty("moduleName")] public string ModuleName { get; set; }
+        [JsonProperty("taskName")] public string TaskName { get; set; }
+    }
+
+    // RAPID Execute
+    public class RapidExecuteRequest
+    {
+        [JsonProperty("action")] public string Action { get; set; }
+        [JsonProperty("taskName")] public string TaskName { get; set; }
+        [JsonProperty("executionMode")] public string ExecutionMode { get; set; }
+        [JsonProperty("cycle")] public string Cycle { get; set; }
+        [JsonProperty("stopMode")] public string StopMode { get; set; }
+    }
+
+    public class RapidExecuteResponse
+    {
+        [JsonProperty("success")] public bool Success { get; set; }
+        [JsonProperty("message")] public string Message { get; set; }
+        [JsonProperty("executionStatus")] public string ExecutionStatus { get; set; }
+    }
+
+    // RAPID Status
+    public class RapidStatusResponse
+    {
+        [JsonProperty("success")] public bool Success { get; set; }
+        [JsonProperty("controllerExecutionStatus")] public string ControllerExecutionStatus { get; set; }
+        [JsonProperty("tasks")] public List<TaskStatusData> Tasks { get; set; }
+    }
+
+    public class TaskStatusData
+    {
+        [JsonProperty("name")] public string Name { get; set; }
+        [JsonProperty("executionStatus")] public string ExecutionStatus { get; set; }
+        [JsonProperty("enabled")] public bool Enabled { get; set; }
+        [JsonProperty("type")] public string Type { get; set; }
+        [JsonProperty("programPointer")] public ProgramPointerData ProgramPointer { get; set; }
+        [JsonProperty("motionPointer")] public ProgramPointerData MotionPointer { get; set; }
+    }
+
+    public class ProgramPointerData
+    {
+        [JsonProperty("module")] public string Module { get; set; }
+        [JsonProperty("routine")] public string Routine { get; set; }
+        [JsonProperty("range")] public string Range { get; set; }
+    }
+
+    // Event Log
+    public class EventLogResponse
+    {
+        [JsonProperty("success")] public bool Success { get; set; }
+        [JsonProperty("messages")] public List<EventLogMessageData> Messages { get; set; }
+    }
+
+    public class EventLogMessageData
+    {
+        [JsonProperty("sequenceNumber")] public int SequenceNumber { get; set; }
+        [JsonProperty("timestamp")] public string Timestamp { get; set; }
+        [JsonProperty("title")] public string Title { get; set; }
+        [JsonProperty("body")] public string Body { get; set; }
+        [JsonProperty("categoryName")] public string CategoryName { get; set; }
+        [JsonProperty("type")] public string Type { get; set; }
     }
 
     #endregion
