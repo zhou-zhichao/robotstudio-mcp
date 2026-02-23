@@ -33,6 +33,13 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
 
+  <!-- Resolve RobotStudio SDK bin path for either Program Files or Program Files (x86) -->
+  <PropertyGroup>
+    <ProgramFilesX86>$([System.Environment]::GetEnvironmentVariable('ProgramFiles(x86)'))</ProgramFilesX86>
+    <RobotStudioBin Condition="Exists('$(ProgramFilesX86)\ABB\RobotStudio 2024\Bin')">$(ProgramFilesX86)\ABB\RobotStudio 2024\Bin</RobotStudioBin>
+    <RobotStudioBin Condition="'$(RobotStudioBin)' == ''">$(ProgramFiles)\ABB\RobotStudio 2024\Bin</RobotStudioBin>
+  </PropertyGroup>
+
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -50,19 +57,15 @@
       Default location: C:\Program Files (x86)\ABB\RobotStudio 20XX\Bin
     -->
     <Reference Include="ABB.Robotics.RobotStudio">
-      <HintPath>$(ProgramFiles)\ABB\RobotStudio 2024\Bin\ABB.Robotics.RobotStudio.dll</HintPath>
+      <HintPath>$(RobotStudioBin)\ABB.Robotics.RobotStudio.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="ABB.Robotics.RobotStudio.Stations">
-      <HintPath>$(ProgramFiles)\ABB\RobotStudio 2024\Bin\ABB.Robotics.RobotStudio.Stations.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="ABB.Robotics.Controllers">
-      <HintPath>$(ProgramFiles)\ABB\RobotStudio 2024\Bin\ABB.Robotics.Controllers.dll</HintPath>
+      <HintPath>$(RobotStudioBin)\ABB.Robotics.RobotStudio.Stations.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="ABB.Robotics.Controllers.PC">
-      <HintPath>$(ProgramFiles)\ABB\RobotStudio 2024\Bin\ABB.Robotics.Controllers.PC.dll</HintPath>
+      <HintPath>$(RobotStudioBin)\ABB.Robotics.Controllers.PC.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>
@@ -73,16 +76,17 @@
 
   <ItemGroup>
     <None Include="packages.config" />
-    <None Include="addin.xml" />
+    <None Include="RobotStudioMcpAddin.rsaddin" />
   </ItemGroup>
 
   <!-- Post-build event to copy DLL to RobotStudio Addins folder -->
   <PropertyGroup>
+    <RobotStudioAddinsDir>$(RobotStudioBin)\Addins\RobotStudioMcpAddin</RobotStudioAddinsDir>
     <PostBuildEvent>
-      if not exist "$(LocalAppData)\ABB\RobotStudio\Addins\RobotStudioMcpAddin" mkdir "$(LocalAppData)\ABB\RobotStudio\Addins\RobotStudioMcpAddin"
-      copy "$(TargetPath)" "$(LocalAppData)\ABB\RobotStudio\Addins\RobotStudioMcpAddin\"
-      copy "$(ProjectDir)addin.xml" "$(LocalAppData)\ABB\RobotStudio\Addins\RobotStudioMcpAddin\"
-      if exist "$(TargetDir)Newtonsoft.Json.dll" copy "$(TargetDir)Newtonsoft.Json.dll" "$(LocalAppData)\ABB\RobotStudio\Addins\RobotStudioMcpAddin\"
+      if not exist "$(RobotStudioAddinsDir)" mkdir "$(RobotStudioAddinsDir)"
+      copy /Y "$(TargetPath)" "$(RobotStudioAddinsDir)\"
+      copy /Y "$(ProjectDir)RobotStudioMcpAddin.rsaddin" "$(RobotStudioAddinsDir)\"
+      if exist "$(TargetDir)Newtonsoft.Json.dll" copy /Y "$(TargetDir)Newtonsoft.Json.dll" "$(RobotStudioAddinsDir)\"
     </PostBuildEvent>
   </PropertyGroup>
 

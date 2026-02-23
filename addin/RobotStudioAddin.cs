@@ -1,111 +1,85 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using ABB.Robotics.RobotStudio;
 using ABB.Robotics.RobotStudio.Stations;
 using ABB.Robotics.Controllers;
-using ABB.Robotics.Controllers.RapidDomain;
 using ABB.Robotics.Controllers.MotionDomain;
 using Newtonsoft.Json;
 
 namespace RobotStudioMcpAddin
 {
-    /// <summary>
-    /// RobotStudio Add-in that exposes a local HTTP REST API for MCP integration.
-    /// Provides endpoints to read joint positions and control simulation.
-    /// </summary>
     public class Addin
     {
-        private static HttpListener _listener;
+        private static TcpListener _tcpListener;
         private static CancellationTokenSource _cts;
         private static readonly object _lock = new object();
         private const int Port = 8080;
-        private const string ListenerPrefix = "http://localhost:8080/";
 
-        /// <summary>
-        /// Add-in entry point called by RobotStudio when the add-in is loaded.
-        /// </summary>
         public static void AddinMain()
-        {
-            Logger.AddMessage(new LogMessage("RobotStudio MCP Add-in initializing..."));
-
-            // Start the HTTP server on a background thread
-            _cts = new CancellationTokenSource();
-            Task.Run(() => StartHttpServer(_cts.Token));
-
-            // Register for station events
-            Project.UndoContext.StateChanged += OnProjectStateChanged;
-
-            Logger.AddMessage(new LogMessage($"RobotStudio MCP Add-in started. Listening on port {Port}"));
-        }
-
-        /// <summary>
-        /// Called when the add-in is unloaded.
-        /// </summary>
-        public static void AddinUnload()
-        {
-            Logger.AddMessage(new LogMessage("RobotStudio MCP Add-in shutting down..."));
-
-            _cts?.Cancel();
-
-            lock (_lock)
-            {
-                if (_listener != null && _listener.IsListening)
-                {
-                    _listener.Stop();
-                    _listener.Close();
-                    _listener = null;
-                }
-            }
-
-            Logger.AddMessage(new LogMessage("RobotStudio MCP Add-in stopped."));
-        }
-
-        private static void OnProjectStateChanged(object sender, EventArgs e)
-        {
-            // Handle project state changes if needed
-        }
-
-        /// <summary>
-        /// Starts the HTTP listener server.
-        /// </summary>
-        private static void StartHttpServer(CancellationToken cancellationToken)
         {
             try
             {
-                _listener = new HttpListener();
-                _listener.Prefixes.Add(ListenerPrefix);
-                _listener.Start();
+                Logger.AddMessage(new LogMessage("MCP Add-in: Initializing..."));
+                _cts = new CancellationTokenSource();
+                var thread = new Thread(() => RunServer(_cts.Token));
+                thread.IsBackground = true;
+                thread.Start();
+                Logger.AddMessage(new LogMessage("MCP Add-in: Started on port " + Port));
+            }
+            catch (Exception ex)
+            {
+                Logger.AddMessage(new LogMessage("MCP Add-in: Failed to start - " + ex.Message, LogMessageSeverity.Error));
+            }
+        }
 
-                Logger.AddMessage(new LogMessage($"HTTP server listening on {ListenerPrefix}"));
+        public static void AddinUnload()
+        {
+            try
+            {
+                Logger.AddMessage(new LogMessage("MCP Add-in: Shutting down..."));
+                if (_cts != null) _cts.Cancel();
+                lock (_lock)
+                {
+                    if (_tcpListener != null) _tcpListener.Stop();
+                    _tcpListener = null;
+                }
+                Logger.AddMessage(new LogMessage("MCP Add-in: Stopped."));
+            }
+            catch (Exception ex)
+            {
+                Logger.AddMessage(new LogMessage("MCP Add-in: Error during shutdown - " + ex.Message, LogMessageSeverity.Warning));
+            }
+        }
 
-                while (!cancellationToken.IsCancellationRequested)
+        private static void RunServer(CancellationToken ct)
+        {
+            try
+            {
+                _tcpListener = new TcpListener(IPAddress.Loopback, Port);
+                _tcpListener.Start();
+                Logger.AddMessage(new LogMessage("MCP Add-in: TCP server listening on 127.0.0.1:" + Port));
+
+                while (!ct.IsCancellationRequested)
                 {
                     try
                     {
-                        // Use async pattern with timeout to allow cancellation
-                        var result = _listener.BeginGetContext(null, null);
-                        var waitHandles = new[] { result.AsyncWaitHandle, cancellationToken.WaitHandle };
-                        int index = WaitHandle.WaitAny(waitHandles, TimeSpan.FromSeconds(1));
-
-                        if (index == 1 || cancellationToken.IsCancellationRequested)
+                        if (!_tcpListener.Pending())
                         {
-                            break;
+                            Thread.Sleep(50);
+                            continue;
                         }
-
-                        if (index == 0)
-                        {
-                            var context = _listener.EndGetContext(result);
-                            Task.Run(() => HandleRequest(context));
-                        }
+                        var client = _tcpListener.AcceptTcpClient();
+                        ThreadPool.QueueUserWorkItem(_ => HandleClient(client));
                     }
-                    catch (HttpListenerException ex) when (ex.ErrorCode == 995)
+                    catch (SocketException)
                     {
-                        // Listener was stopped
-                        break;
+                        if (ct.IsCancellationRequested) break;
                     }
                     catch (ObjectDisposedException)
                     {
@@ -115,427 +89,399 @@ namespace RobotStudioMcpAddin
             }
             catch (Exception ex)
             {
-                Logger.AddMessage(new LogMessage($"HTTP server error: {ex.Message}", LogMessageSeverity.Error));
+                Logger.AddMessage(new LogMessage("MCP Add-in: Server error - " + ex.ToString(), LogMessageSeverity.Error));
             }
         }
 
-        /// <summary>
-        /// Handles incoming HTTP requests and routes them to appropriate handlers.
-        /// </summary>
-        private static void HandleRequest(HttpListenerContext context)
+        private static void HandleClient(TcpClient client)
         {
             try
             {
-                var request = context.Request;
-                var response = context.Response;
+                client.ReceiveTimeout = 5000;
+                client.SendTimeout = 5000;
 
-                // Add CORS headers for local development
-                response.Headers.Add("Access-Control-Allow-Origin", "*");
-                response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-                response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
-
-                // Handle CORS preflight
-                if (request.HttpMethod == "OPTIONS")
+                using (client)
+                using (var stream = client.GetStream())
                 {
-                    response.StatusCode = 200;
-                    response.Close();
-                    return;
-                }
+                    // Read HTTP request
+                    var requestLine = "";
+                    var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    var headerBuilder = new StringBuilder();
+                    var buffer = new byte[8192];
+                    var received = new StringBuilder();
 
-                string path = request.Url.AbsolutePath.ToLowerInvariant();
-                string method = request.HttpMethod.ToUpperInvariant();
+                    // Read until we find end of headers (\r\n\r\n)
+                    int bytesRead;
+                    while ((bytesRead = stream.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        received.Append(Encoding.UTF8.GetString(buffer, 0, bytesRead));
+                        if (received.ToString().Contains("\r\n\r\n"))
+                            break;
+                    }
 
-                switch (path)
-                {
-                    case "/joints":
-                        if (method == "GET")
-                        {
-                            HandleGetJoints(context);
-                        }
-                        else
-                        {
-                            SendMethodNotAllowed(response, "GET");
-                        }
-                        break;
+                    var rawRequest = received.ToString();
+                    var headerEnd = rawRequest.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+                    if (headerEnd < 0)
+                    {
+                        SendResponse(stream, 400, "Bad Request");
+                        return;
+                    }
 
-                    case "/simulation":
-                        if (method == "POST")
-                        {
-                            HandleSimulationControl(context);
-                        }
-                        else
-                        {
-                            SendMethodNotAllowed(response, "POST");
-                        }
-                        break;
+                    var headerSection = rawRequest.Substring(0, headerEnd);
+                    var body = rawRequest.Substring(headerEnd + 4);
+                    var lines = headerSection.Split(new[] { "\r\n" }, StringSplitOptions.None);
 
-                    case "/status":
-                        if (method == "GET")
-                        {
-                            HandleGetStatus(context);
-                        }
-                        else
-                        {
-                            SendMethodNotAllowed(response, "GET");
-                        }
-                        break;
+                    if (lines.Length == 0)
+                    {
+                        SendResponse(stream, 400, "Bad Request");
+                        return;
+                    }
 
-                    case "/health":
-                        HandleHealthCheck(context);
-                        break;
+                    requestLine = lines[0];
+                    for (int i = 1; i < lines.Length; i++)
+                    {
+                        var colonIdx = lines[i].IndexOf(':');
+                        if (colonIdx > 0)
+                        {
+                            var key = lines[i].Substring(0, colonIdx).Trim();
+                            var val = lines[i].Substring(colonIdx + 1).Trim();
+                            headers[key] = val;
+                        }
+                    }
 
-                    default:
-                        SendNotFound(response, path);
-                        break;
+                    // Read remaining body if Content-Length is specified
+                    string clStr;
+                    int contentLength;
+                    if (headers.TryGetValue("Content-Length", out clStr) && int.TryParse(clStr, out contentLength))
+                    {
+                        while (Encoding.UTF8.GetByteCount(body) < contentLength)
+                        {
+                            bytesRead = stream.Read(buffer, 0, buffer.Length);
+                            if (bytesRead == 0) break;
+                            body += Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                        }
+                    }
+
+                    // Parse request line: "GET /path HTTP/1.1"
+                    var parts = requestLine.Split(' ');
+                    if (parts.Length < 2)
+                    {
+                        SendResponse(stream, 400, "Bad Request");
+                        return;
+                    }
+
+                    var method = parts[0].ToUpperInvariant();
+                    var path = parts[1].ToLowerInvariant();
+
+                    // Remove query string
+                    var qIdx = path.IndexOf('?');
+                    if (qIdx >= 0) path = path.Substring(0, qIdx);
+
+                    // Handle CORS preflight
+                    if (method == "OPTIONS")
+                    {
+                        SendResponse(stream, 200, "");
+                        return;
+                    }
+
+                    // Route request
+                    string responseJson;
+                    int statusCode = 200;
+
+                    switch (path)
+                    {
+                        case "/health":
+                            responseJson = JsonConvert.SerializeObject(new { status = "ok", timestamp = DateTime.UtcNow.ToString("o") });
+                            break;
+                        case "/joints":
+                            if (method != "GET") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
+                            responseJson = HandleGetJoints(out statusCode);
+                            break;
+                        case "/simulation":
+                            if (method != "POST") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
+                            responseJson = HandleSimulation(body, out statusCode);
+                            break;
+                        case "/status":
+                            if (method != "GET") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
+                            responseJson = HandleGetStatus(out statusCode);
+                            break;
+                        default:
+                            statusCode = 404;
+                            responseJson = JsonConvert.SerializeObject(new ErrorResponse
+                            {
+                                Success = false,
+                                Error = "Not Found",
+                                Message = "Endpoint '" + path + "' not found. Available: /joints, /simulation, /status, /health"
+                            });
+                            break;
+                    }
+
+                    SendResponse(stream, statusCode, responseJson);
                 }
             }
             catch (Exception ex)
             {
-                Logger.AddMessage(new LogMessage($"Request handling error: {ex.Message}", LogMessageSeverity.Warning));
-                SendError(context.Response, 500, "Internal Server Error", ex.Message);
-            }
-            finally
-            {
-                try
-                {
-                    context.Response.Close();
-                }
-                catch { }
+                Logger.AddMessage(new LogMessage("MCP Add-in: Request error - " + ex.Message, LogMessageSeverity.Warning));
             }
         }
 
-        /// <summary>
-        /// Handles GET /joints - Returns current joint positions from the active controller.
-        /// </summary>
-        private static void HandleGetJoints(HttpListenerContext context)
+        private static void SendResponse(NetworkStream stream, int statusCode, string jsonBody)
+        {
+            var statusText = statusCode == 200 ? "OK" : statusCode == 404 ? "Not Found" : statusCode == 400 ? "Bad Request" : statusCode == 405 ? "Method Not Allowed" : "Error";
+            var bodyBytes = Encoding.UTF8.GetBytes(jsonBody);
+
+            var sb = new StringBuilder();
+            sb.Append("HTTP/1.1 ").Append(statusCode).Append(" ").AppendLine(statusText);
+            sb.AppendLine("Content-Type: application/json; charset=utf-8");
+            sb.Append("Content-Length: ").AppendLine(bodyBytes.Length.ToString());
+            sb.AppendLine("Access-Control-Allow-Origin: *");
+            sb.AppendLine("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+            sb.AppendLine("Access-Control-Allow-Headers: Content-Type");
+            sb.AppendLine("Connection: close");
+            sb.AppendLine();
+
+            var headerBytes = Encoding.UTF8.GetBytes(sb.ToString());
+            stream.Write(headerBytes, 0, headerBytes.Length);
+            stream.Write(bodyBytes, 0, bodyBytes.Length);
+            stream.Flush();
+        }
+
+        private static string HandleGetJoints(out int statusCode)
         {
             try
             {
                 var station = Project.ActiveProject as Station;
                 if (station == null)
                 {
-                    SendError(context.Response, 404, "No Active Station", "No station is currently open in RobotStudio.");
-                    return;
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Active Station", Message = "No station is currently open in RobotStudio." });
                 }
 
-                // Find the virtual controller
-                Controller controller = null;
-                foreach (var vc in station.VirtualControllers)
-                {
-                    try
-                    {
-                        controller = Controller.GetController(vc.SystemId);
-                        if (controller != null)
-                        {
-                            break;
-                        }
-                    }
-                    catch
-                    {
-                        continue;
-                    }
-                }
-
+                Controller controller = TryGetController(station);
                 if (controller == null)
                 {
-                    SendError(context.Response, 404, "No Controller", "No virtual controller found in the station.");
-                    return;
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Controller", Message = "No virtual controller found in the station." });
                 }
 
-                // Get joint positions from the mechanical unit
-                JointData jointData = GetJointPositions(controller);
+                JointData jointData;
+                using (controller)
+                {
+                    jointData = GetJointPositions(controller);
+                }
 
-                var responseObj = new JointResponse
+                statusCode = 200;
+                return JsonConvert.SerializeObject(new JointResponse
                 {
                     Success = true,
                     Timestamp = DateTime.UtcNow.ToString("o"),
                     Joints = jointData
-                };
-
-                SendJsonResponse(context.Response, 200, responseObj);
+                }, Formatting.Indented);
             }
             catch (Exception ex)
             {
-                SendError(context.Response, 500, "Joint Read Error", ex.Message);
+                statusCode = 500;
+                return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Joint Read Error", Message = ex.Message });
             }
         }
 
-        /// <summary>
-        /// Gets joint positions from the controller's mechanical unit.
-        /// </summary>
+        private static Controller TryGetController(Station station)
+        {
+            if (station == null || station.Irc5Controllers == null || station.Irc5Controllers.Count == 0)
+                return null;
+
+            for (int i = 0; i < station.Irc5Controllers.Count; i++)
+            {
+                var vc = station.Irc5Controllers[i];
+                if (vc == null || string.IsNullOrWhiteSpace(vc.SystemId))
+                    continue;
+
+                Guid systemId;
+                if (!Guid.TryParse(vc.SystemId, out systemId))
+                    continue;
+
+                try
+                {
+                    return Controller.Connect(systemId, ConnectionType.RobotStudio, false);
+                }
+                catch (Exception ex)
+                {
+                    Logger.AddMessage(new LogMessage("MCP Add-in: Failed to connect to controller " + vc.SystemId + ": " + ex.Message, LogMessageSeverity.Warning));
+                }
+            }
+
+            return null;
+        }
+
         private static JointData GetJointPositions(Controller controller)
         {
             var jointData = new JointData();
 
-            try
+            using (Mastership.Request(controller))
             {
-                using (Mastership.Request(controller))
+                var motionSystem = controller.MotionSystem;
+                if (motionSystem != null && motionSystem.MechanicalUnits.Count > 0)
                 {
-                    var motionSystem = controller.MotionSystem;
-                    if (motionSystem != null && motionSystem.MechanicalUnits.Count > 0)
-                    {
-                        var mechUnit = motionSystem.MechanicalUnits[0];
-                        var jointTarget = mechUnit.GetPosition();
+                    var mechUnit = motionSystem.MechanicalUnits[0];
+                    var jointTarget = mechUnit.GetPosition();
+                    var robAx = jointTarget.RobAx;
 
-                        if (jointTarget != null)
-                        {
-                            var robAx = jointTarget.RobAx;
-
-                            // Values are already in degrees from the RobotStudio API
-                            jointData.J1 = Math.Round(robAx.Rax_1, 3);
-                            jointData.J2 = Math.Round(robAx.Rax_2, 3);
-                            jointData.J3 = Math.Round(robAx.Rax_3, 3);
-                            jointData.J4 = Math.Round(robAx.Rax_4, 3);
-                            jointData.J5 = Math.Round(robAx.Rax_5, 3);
-                            jointData.J6 = Math.Round(robAx.Rax_6, 3);
-                        }
-                    }
+                    jointData.J1 = Math.Round(robAx.Rax_1, 3);
+                    jointData.J2 = Math.Round(robAx.Rax_2, 3);
+                    jointData.J3 = Math.Round(robAx.Rax_3, 3);
+                    jointData.J4 = Math.Round(robAx.Rax_4, 3);
+                    jointData.J5 = Math.Round(robAx.Rax_5, 3);
+                    jointData.J6 = Math.Round(robAx.Rax_6, 3);
                 }
-            }
-            catch (Exception ex)
-            {
-                Logger.AddMessage(new LogMessage($"Error reading joints: {ex.Message}", LogMessageSeverity.Warning));
-                throw;
             }
 
             return jointData;
         }
 
-        /// <summary>
-        /// Handles POST /simulation - Controls simulation start/stop.
-        /// </summary>
-        private static void HandleSimulationControl(HttpListenerContext context)
+        private static string HandleSimulation(string body, out int statusCode)
         {
             try
             {
-                // Read request body
-                string body;
-                using (var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding))
-                {
-                    body = reader.ReadToEnd();
-                }
-
                 var request = JsonConvert.DeserializeObject<SimulationRequest>(body);
-
                 if (request == null || string.IsNullOrEmpty(request.Action))
                 {
-                    SendError(context.Response, 400, "Invalid Request", "Request body must contain 'action' field with value 'start' or 'stop'.");
-                    return;
+                    statusCode = 400;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Invalid Request", Message = "Request body must contain 'action' field with value 'start' or 'stop'." });
+                }
+
+                var station = Project.ActiveProject as Station;
+                if (station == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Active Station", Message = "No station is currently open in RobotStudio." });
                 }
 
                 string action = request.Action.ToLowerInvariant();
-                bool success = false;
-                string message = "";
-
-                // Execute on UI thread since Simulator requires it
-                Station station = Project.ActiveProject as Station;
-                if (station == null)
-                {
-                    SendError(context.Response, 404, "No Active Station", "No station is currently open in RobotStudio.");
-                    return;
-                }
+                string message;
 
                 switch (action)
                 {
                     case "start":
-                        if (!Simulator.IsRunning)
+                        if (!IsSimulationRunning())
                         {
                             Simulator.Start();
-                            success = true;
                             message = "Simulation started.";
                         }
                         else
                         {
-                            success = true;
                             message = "Simulation is already running.";
                         }
                         break;
-
                     case "stop":
-                        if (Simulator.IsRunning)
+                        if (IsSimulationRunning())
                         {
                             Simulator.Stop();
-                            success = true;
                             message = "Simulation stopped.";
                         }
                         else
                         {
-                            success = true;
                             message = "Simulation is not running.";
                         }
                         break;
-
                     default:
-                        SendError(context.Response, 400, "Invalid Action", $"Unknown action '{action}'. Use 'start' or 'stop'.");
-                        return;
+                        statusCode = 400;
+                        return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Invalid Action", Message = "Unknown action '" + action + "'. Use 'start' or 'stop'." });
                 }
 
-                var responseObj = new SimulationResponse
+                statusCode = 200;
+                return JsonConvert.SerializeObject(new SimulationResponse
                 {
-                    Success = success,
+                    Success = true,
                     Message = message,
-                    IsRunning = Simulator.IsRunning
-                };
-
-                SendJsonResponse(context.Response, 200, responseObj);
+                    IsRunning = IsSimulationRunning()
+                }, Formatting.Indented);
             }
             catch (Exception ex)
             {
-                SendError(context.Response, 500, "Simulation Control Error", ex.Message);
+                statusCode = 500;
+                return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Simulation Control Error", Message = ex.Message });
             }
         }
 
-        /// <summary>
-        /// Handles GET /status - Returns current station and simulation status.
-        /// </summary>
-        private static void HandleGetStatus(HttpListenerContext context)
+        private static string HandleGetStatus(out int statusCode)
         {
             try
             {
                 var station = Project.ActiveProject as Station;
 
-                var status = new StatusResponse
+                statusCode = 200;
+                return JsonConvert.SerializeObject(new StatusResponse
                 {
                     HasActiveStation = station != null,
-                    StationName = station?.Name ?? "",
-                    IsSimulationRunning = Simulator.IsRunning,
-                    VirtualControllerCount = station?.VirtualControllers?.Count ?? 0
-                };
-
-                SendJsonResponse(context.Response, 200, status);
+                    StationName = station != null ? station.Name : "",
+                    IsSimulationRunning = IsSimulationRunning(),
+                    VirtualControllerCount = station != null && station.Irc5Controllers != null ? station.Irc5Controllers.Count : 0
+                }, Formatting.Indented);
             }
             catch (Exception ex)
             {
-                SendError(context.Response, 500, "Status Error", ex.Message);
+                statusCode = 500;
+                return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Status Error", Message = ex.Message });
             }
         }
 
-        /// <summary>
-        /// Handles /health - Simple health check endpoint.
-        /// </summary>
-        private static void HandleHealthCheck(HttpListenerContext context)
+        private static bool IsSimulationRunning()
         {
-            var health = new { status = "ok", timestamp = DateTime.UtcNow.ToString("o") };
-            SendJsonResponse(context.Response, 200, health);
-        }
-
-        #region Response Helpers
-
-        private static void SendJsonResponse(HttpListenerResponse response, int statusCode, object data)
-        {
-            response.StatusCode = statusCode;
-            response.ContentType = "application/json; charset=utf-8";
-
-            string json = JsonConvert.SerializeObject(data, Formatting.Indented);
-            byte[] buffer = Encoding.UTF8.GetBytes(json);
-
-            response.ContentLength64 = buffer.Length;
-            response.OutputStream.Write(buffer, 0, buffer.Length);
-        }
-
-        private static void SendError(HttpListenerResponse response, int statusCode, string error, string message)
-        {
-            var errorObj = new ErrorResponse
+            try
             {
-                Success = false,
-                Error = error,
-                Message = message
-            };
-            SendJsonResponse(response, statusCode, errorObj);
+                return Simulator.State == SimulationState.Running;
+            }
+            catch
+            {
+                return false;
+            }
         }
-
-        private static void SendMethodNotAllowed(HttpListenerResponse response, string allowedMethod)
-        {
-            response.Headers.Add("Allow", allowedMethod);
-            SendError(response, 405, "Method Not Allowed", $"This endpoint only supports {allowedMethod} requests.");
-        }
-
-        private static void SendNotFound(HttpListenerResponse response, string path)
-        {
-            SendError(response, 404, "Not Found", $"Endpoint '{path}' not found. Available: /joints, /simulation, /status, /health");
-        }
-
-        #endregion
     }
 
     #region Data Transfer Objects
 
     public class JointData
     {
-        [JsonProperty("j1")]
-        public double J1 { get; set; }
-
-        [JsonProperty("j2")]
-        public double J2 { get; set; }
-
-        [JsonProperty("j3")]
-        public double J3 { get; set; }
-
-        [JsonProperty("j4")]
-        public double J4 { get; set; }
-
-        [JsonProperty("j5")]
-        public double J5 { get; set; }
-
-        [JsonProperty("j6")]
-        public double J6 { get; set; }
+        [JsonProperty("j1")] public double J1 { get; set; }
+        [JsonProperty("j2")] public double J2 { get; set; }
+        [JsonProperty("j3")] public double J3 { get; set; }
+        [JsonProperty("j4")] public double J4 { get; set; }
+        [JsonProperty("j5")] public double J5 { get; set; }
+        [JsonProperty("j6")] public double J6 { get; set; }
     }
 
     public class JointResponse
     {
-        [JsonProperty("success")]
-        public bool Success { get; set; }
-
-        [JsonProperty("timestamp")]
-        public string Timestamp { get; set; }
-
-        [JsonProperty("joints")]
-        public JointData Joints { get; set; }
+        [JsonProperty("success")] public bool Success { get; set; }
+        [JsonProperty("timestamp")] public string Timestamp { get; set; }
+        [JsonProperty("joints")] public JointData Joints { get; set; }
     }
 
     public class SimulationRequest
     {
-        [JsonProperty("action")]
-        public string Action { get; set; }
+        [JsonProperty("action")] public string Action { get; set; }
     }
 
     public class SimulationResponse
     {
-        [JsonProperty("success")]
-        public bool Success { get; set; }
-
-        [JsonProperty("message")]
-        public string Message { get; set; }
-
-        [JsonProperty("isRunning")]
-        public bool IsRunning { get; set; }
+        [JsonProperty("success")] public bool Success { get; set; }
+        [JsonProperty("message")] public string Message { get; set; }
+        [JsonProperty("isRunning")] public bool IsRunning { get; set; }
     }
 
     public class StatusResponse
     {
-        [JsonProperty("hasActiveStation")]
-        public bool HasActiveStation { get; set; }
-
-        [JsonProperty("stationName")]
-        public string StationName { get; set; }
-
-        [JsonProperty("isSimulationRunning")]
-        public bool IsSimulationRunning { get; set; }
-
-        [JsonProperty("virtualControllerCount")]
-        public int VirtualControllerCount { get; set; }
+        [JsonProperty("hasActiveStation")] public bool HasActiveStation { get; set; }
+        [JsonProperty("stationName")] public string StationName { get; set; }
+        [JsonProperty("isSimulationRunning")] public bool IsSimulationRunning { get; set; }
+        [JsonProperty("virtualControllerCount")] public int VirtualControllerCount { get; set; }
     }
 
     public class ErrorResponse
     {
-        [JsonProperty("success")]
-        public bool Success { get; set; }
-
-        [JsonProperty("error")]
-        public string Error { get; set; }
-
-        [JsonProperty("message")]
-        public string Message { get; set; }
+        [JsonProperty("success")] public bool Success { get; set; }
+        [JsonProperty("error")] public string Error { get; set; }
+        [JsonProperty("message")] public string Message { get; set; }
     }
 
     #endregion

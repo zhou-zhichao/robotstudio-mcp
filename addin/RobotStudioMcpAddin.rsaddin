@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<RobotStudioAddIn xmlns="urn:abb-robotics-robotstudio-addin"
+                  autoLoad="true">
+  <ApplicationId>RobotStudioMcpAddin</ApplicationId>
+  <DisplayName>RobotStudio MCP Bridge</DisplayName>
+  <DisplayVersion>1.0.0</DisplayVersion>
+  <Description>Exposes a local HTTP REST API for MCP integration with AI assistants.</Description>
+  <AddInType>General</AddInType>
+  <Assembly>
+    <FileName>RobotStudioMcpAddin.dll</FileName>
+    <Entrypoint>RobotStudioMcpAddin.Addin.AddinMain</Entrypoint>
+  </Assembly>
+  <Dependencies>Online</Dependencies>
+  <Platform>Any</Platform>
+</RobotStudioAddIn>
