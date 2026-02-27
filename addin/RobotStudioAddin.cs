@@ -500,6 +500,8 @@ namespace RobotStudioMcpAddin
 
                 using (controller)
                 {
+                    controller.Logon(UserInfo.DefaultUser);
+
                     if (controller.Rapid.ExecutionStatus == ExecutionStatus.Running)
                     {
                         statusCode = 409;
@@ -507,13 +509,38 @@ namespace RobotStudioMcpAddin
                     }
 
                     string tempFile = Path.Combine(Path.GetTempPath(), fileName);
-                    File.WriteAllText(tempFile, request.Code, Encoding.UTF8);
+                    // RAPID requires no BOM and \r\n line endings
+                    string normalizedCode = request.Code.Replace("\r\n", "\n").Replace("\n", "\r\n");
+                    File.WriteAllText(tempFile, normalizedCode, new UTF8Encoding(false));
 
                     try
                     {
-                        string homePath = controller.GetEnvironmentVariable("HOME");
+                        string homePath;
+                        try
+                        {
+                            homePath = controller.GetEnvironmentVariable("HOME");
+                        }
+                        catch (Exception envEx)
+                        {
+                            Logger.AddMessage(new LogMessage("MCP Add-in: GetEnvironmentVariable HOME failed: " + envEx.Message + ", using fallback", LogMessageSeverity.Warning));
+                            homePath = controller.FileSystem.RemoteDirectory;
+                        }
+
+                        // For virtual controllers, HOME returns a local Windows path.
+                        // Copy the file directly instead of using controller.FileSystem.PutFile.
+                        string destFile = Path.Combine(homePath.Replace('/', '\\'), fileName);
+                        try
+                        {
+                            File.Copy(tempFile, destFile, true);
+                        }
+                        catch (Exception copyEx)
+                        {
+                            statusCode = 500;
+                            return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "File Copy Failed", Message = "Copy failed: " + copyEx.Message + " (dest: " + destFile + ")" });
+                        }
+
+                        // Use controller-relative path for LoadModuleFromFile
                         string controllerFilePath = homePath + "/" + fileName;
-                        controller.FileSystem.PutFile(tempFile, controllerFilePath, true);
 
                         ABB.Robotics.Controllers.RapidDomain.Task rapidTask = controller.Rapid.GetTask(taskName);
                         if (rapidTask == null)
@@ -522,11 +549,44 @@ namespace RobotStudioMcpAddin
                             return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Task Not Found", Message = "RAPID task '" + taskName + "' not found." });
                         }
 
-                        RapidLoadMode loadMode = replace ? RapidLoadMode.Replace : RapidLoadMode.Add;
                         bool loadSuccess;
-                        using (Mastership.Request(controller.Rapid))
+                        try
                         {
-                            loadSuccess = rapidTask.LoadModuleFromFile(controllerFilePath, loadMode);
+                            using (Mastership.Request(controller.Rapid))
+                            {
+                                // Delete ALL program modules before loading to avoid
+                                // "Global routine name main ambiguous" from stale modules
+                                if (replace)
+                                {
+                                    try
+                                    {
+                                        ABB.Robotics.Controllers.RapidDomain.Module[] modules = rapidTask.GetModules();
+                                        for (int m = 0; m < modules.Length; m++)
+                                        {
+                                            string mName = modules[m].Name;
+                                            // Skip system modules (BASE, user, etc.)
+                                            if (string.Equals(mName, "BASE", StringComparison.OrdinalIgnoreCase) ||
+                                                string.Equals(mName, "user", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                continue;
+                                            }
+                                            modules[m].Delete();
+                                            Logger.AddMessage(new LogMessage("MCP Add-in: Deleted program module '" + mName + "' before reload."));
+                                        }
+                                    }
+                                    catch (Exception delEx)
+                                    {
+                                        Logger.AddMessage(new LogMessage("MCP Add-in: Module cleanup error: " + delEx.Message, LogMessageSeverity.Warning));
+                                    }
+                                }
+
+                                loadSuccess = rapidTask.LoadModuleFromFile(controllerFilePath, RapidLoadMode.Add);
+                            }
+                        }
+                        catch (Exception loadEx)
+                        {
+                            statusCode = 500;
+                            return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Module Load Exception", Message = "LoadModuleFromFile threw: " + loadEx.Message });
                         }
 
                         if (!loadSuccess)
@@ -589,6 +649,7 @@ namespace RobotStudioMcpAddin
 
                 using (controller)
                 {
+                    controller.Logon(UserInfo.DefaultUser);
                     string message;
 
                     switch (action)
