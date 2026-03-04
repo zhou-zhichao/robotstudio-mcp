@@ -1,77 +1,74 @@
 # RobotStudio MCP Server Bridge
 
-A Model Context Protocol (MCP) server that allows AI assistants to interact with ABB RobotStudio. The system consists of two parts:
+A Model Context Protocol (MCP) server that allows AI assistants to control ABB RobotStudio — reading joint positions, uploading RAPID programs, and executing robot motions in simulation.
 
-1. **C# Add-in**: A .NET Framework 4.8 DLL running inside RobotStudio that exposes a local HTTP REST API on port 8080
-2. **TypeScript MCP Server**: A Node.js application that exposes MCP tools and communicates with the C# Add-in
+Built as a research experiment by a human + Claude (Anthropic AI) pair. See [docs/DEVELOPMENT_LOG.md](docs/DEVELOPMENT_LOG.md) for the honest story of how this was built, including all the failures.
+
+## Architecture
+
+```
+AI Assistant <--MCP--> TypeScript Server <--HTTP--> C# Add-in <--SDK--> RobotStudio
+                        (Node.js)                    (TcpListener        (Virtual
+                        port: stdio                   port: 8080)         Controller)
+```
+
+Two components:
+
+1. **C# Add-in** (.NET Framework 4.8) — Runs inside RobotStudio, exposes HTTP REST API on port 8080
+2. **TypeScript MCP Server** (Node.js) — Bridges MCP protocol to HTTP API
 
 ## Project Structure
 
 ```
 /robotstudio-mcp
   /src
-    server.ts                     # TypeScript MCP Server
+    server.ts                     # TypeScript MCP Server (7 tools)
     package.json
     tsconfig.json
   /addin
-    RobotStudioAddin.cs           # C# Source for the Add-in
+    RobotStudioAddin.cs           # C# Add-in (8 HTTP endpoints)
     RobotStudioMcpAddin.csproj    # MSBuild project file
     RobotStudioMcpAddin.rsaddin   # Add-in manifest (XML)
     packages.config               # NuGet dependencies
+  /docs
+    DEVELOPMENT_LOG.md            # Honest development log with failures
+    RAPID_EXAMPLES.md             # Tested RAPID programs
+  build.ps1                       # Build script
+  deploy.ps1                      # Deployment script (requires admin)
 ```
 
 ## Prerequisites
 
 - ABB RobotStudio 2024 (or compatible version)
 - .NET Framework 4.8 SDK
-- Node.js 18 or later
-- MSBuild (included with .NET Framework, Visual Studio not required)
+- Node.js 18+
+- MSBuild (included with .NET Framework)
 
-## Building the C# Add-in
+## Quick Start
 
-### 1. Restore NuGet Packages
+### 1. Build & Deploy the C# Add-in
 
-```bash
-cd addin
-nuget restore
+```powershell
+# Build
+.\build.ps1
+
+# Deploy (run as Administrator)
+.\deploy.ps1
 ```
 
-Or manually ensure `packages/Newtonsoft.Json.13.0.3/` exists.
-
-### 2. Build the Add-in
-
-Using the .NET Framework MSBuild (no Visual Studio required):
+Or manually:
 
 ```bash
+# Build
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\MSBuild.exe addin\RobotStudioMcpAddin.csproj /p:Configuration=Release
+
+# Copy to RobotStudio Addins folder (needs admin)
+copy addin\bin\Release\RobotStudioMcpAddin.dll "C:\Program Files (x86)\ABB\RobotStudio 2024\Bin\Addins\RobotStudioMcpAddin\"
+copy addin\bin\Release\Newtonsoft.Json.dll "C:\Program Files (x86)\ABB\RobotStudio 2024\Bin\Addins\RobotStudioMcpAddin\"
+copy addin\RobotStudioMcpAddin.rsaddin "C:\Program Files (x86)\ABB\RobotStudio 2024\Bin\Addins\RobotStudioMcpAddin\"
 ```
 
-The post-build event will automatically copy the DLL to:
-```
-C:\Program Files (x86)\ABB\RobotStudio 2024\Bin\Addins\RobotStudioMcpAddin\
-```
-
-> **Note:** Building with post-build deploy requires administrator privileges since the target is in Program Files.
-
-### 3. Manual Installation (if post-build fails)
-
-Copy these files from `addin\bin\Release\`:
-```
-RobotStudioMcpAddin.dll
-Newtonsoft.Json.dll
-```
-
-And the manifest from `addin\`:
-```
-RobotStudioMcpAddin.rsaddin
-```
-
-To:
-```
-C:\Program Files (x86)\ABB\RobotStudio 2024\Bin\Addins\RobotStudioMcpAddin\
-```
-
-## Building the TypeScript MCP Server
+### 2. Build the TypeScript MCP Server
 
 ```bash
 cd src
@@ -79,27 +76,16 @@ npm install
 npm run build
 ```
 
-## Running the System
+### 3. Start RobotStudio
 
-### 1. Start RobotStudio
+1. Launch RobotStudio
+2. Open/create a station with a Virtual Controller
+3. Add-in loads automatically, starts HTTP server on port 8080
+4. Verify: `curl http://localhost:8080/health`
 
-1. Launch ABB RobotStudio
-2. Open or create a station with a Virtual Controller
-3. The Add-in loads automatically and starts the HTTP server on port 8080
-4. Check the RobotStudio Output window for: `MCP Add-in: Started on port 8080`
+### 4. Configure Your AI Assistant
 
-### 2. Verify the Add-in is Running
-
-Test the HTTP API directly:
-```bash
-curl http://localhost:8080/health
-curl http://localhost:8080/status
-curl http://localhost:8080/joints
-```
-
-### 3. Configure Claude Desktop
-
-Add to your Claude Desktop configuration (`%AppData%\Claude\claude_desktop_config.json`):
+Add to Claude Desktop config (`%AppData%\Claude\claude_desktop_config.json`):
 
 ```json
 {
@@ -112,101 +98,81 @@ Add to your Claude Desktop configuration (`%AppData%\Claude\claude_desktop_confi
 }
 ```
 
-### 4. Restart Claude Desktop
-
-After updating the configuration, restart Claude Desktop to load the MCP server.
-
 ## Available MCP Tools
 
-### `get_robot_joints`
-Read real-time joint positions (J1-J6) from the active robot in RobotStudio Virtual Controller. Returns joint angles in degrees.
+| Tool | Description |
+|------|-------------|
+| `get_robot_joints` | Read real-time joint positions (J1-J6) in degrees |
+| `control_simulation` | Start/stop RobotStudio simulation |
+| `get_station_status` | Get station, simulation, and controller info |
+| `upload_rapid_module` | Upload RAPID code to the virtual controller |
+| `control_rapid_execution` | Start/stop/reset RAPID program execution |
+| `get_rapid_execution_status` | Get execution status and program pointer |
+| `get_execution_errors` | Read event log for errors and warnings |
 
-### `control_simulation`
-Start or stop the RobotStudio simulation.
-
-**Parameters:**
-- `action`: `"start"` or `"stop"`
-
-### `get_station_status`
-Get the current status of RobotStudio including whether a station is open, simulation state, and virtual controller information.
-
-## HTTP API Endpoints (Add-in)
+## HTTP API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Health check |
 | `/status` | GET | Station and simulation status |
-| `/joints` | GET | Current joint positions |
+| `/joints` | GET | Current joint positions (J1-J6) |
 | `/simulation` | POST | Control simulation (`{"action": "start\|stop"}`) |
+| `/rapid/upload` | POST | Upload RAPID module |
+| `/rapid/execute` | POST | Control execution (`{"action": "start\|stop\|resetpp"}`) |
+| `/rapid/status` | GET | Execution status and program pointer |
+| `/rapid/errors` | GET | Recent event log messages |
+
+### RAPID Upload Example
+
+```bash
+curl -X POST http://localhost:8080/rapid/upload \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "MODULE MyModule\n  PROC main()\n    MoveAbsJ [[0,0,0,0,30,0],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]], v200, fine, tool0;\n  ENDPROC\nENDMODULE",
+    "moduleName": "MyModule",
+    "taskName": "T_ROB1",
+    "replaceExisting": true
+  }'
+```
 
 ## Troubleshooting
 
 ### Add-in shows X (failed to load) in RobotStudio
 
-This was the main issue encountered during development. The root causes and fixes were:
+See [docs/DEVELOPMENT_LOG.md](docs/DEVELOPMENT_LOG.md) for the full debugging story. Key causes:
 
-**1. HttpListener requires admin privileges (critical)**
+1. **HttpListener requires admin** — We use TcpListener instead (no special permissions needed)
+2. **Must deploy to Program Files** — RobotStudio only scans `C:\Program Files (x86)\ABB\RobotStudio 2024\Bin\Addins\`, not `%LocalAppData%`
+3. **C# 5 syntax only** — MSBuild v4.0 doesn't support `?.`, `$""`, `out var`, `catch when`
+4. **rsaddin manifest** — Must use `<Dependencies>Online</Dependencies>` and `<Platform>Any</Platform>`
 
-The original implementation used `System.Net.HttpListener` to serve the REST API. On Windows, `HttpListener` requires URL ACL registration (`netsh http add urlacl`) for non-admin processes. Since RobotStudio runs as a normal user, `HttpListener.Start()` throws an `HttpListenerException` (Access Denied), causing the add-in to fail silently.
+### RAPID upload fails
 
-**Fix:** Replaced `HttpListener` with `System.Net.Sockets.TcpListener`, which can bind to `127.0.0.1` without any special permissions. HTTP request/response parsing is done manually.
+Common issues we encountered and solved:
 
-**2. Add-in must be deployed to Program Files, not LocalAppData**
+1. **"Exception of type 'System.Exception'"** — Add `controller.Logon(UserInfo.DefaultUser)` before write operations
+2. **PutFile fails on virtual controllers** — Use `File.Copy()` instead; HOME returns a local Windows path
+3. **RAPID syntax error from BOM** — Use `new UTF8Encoding(false)` (no BOM) + normalize to CRLF line endings
+4. **"Global routine name main ambiguous"** — Delete ALL existing program modules before loading new ones
 
-RobotStudio only scans for add-ins in its own installation directory:
-```
-C:\Program Files (x86)\ABB\RobotStudio 2024\Bin\Addins\
-```
+### Wrist singularity / Joint out of range
 
-It does **NOT** scan `%LocalAppData%\ABB\RobotStudio\Addins\`. Deploying to LocalAppData will result in the add-in not appearing in the Add-Ins list at all.
+When the robot tool points straight down (orientation `[0, 0, 1, 0]`), J5 approaches 0 degrees, causing wrist singularity. `SingArea \Wrist` can make it worse by spinning J4 past its limits. Solutions:
+- Always start programs with `MoveAbsJ` to a known safe position
+- Keep the drawing plane at z >= 200mm for IRB120
+- Use `ConfL \Off; ConfJ \Off;` to disable configuration checking
+- After a failed run, the robot may be stuck in a bad joint configuration — the next program must first recover to home position
 
-**3. rsaddin manifest must follow official conventions**
+## Key Implementation Details
 
-The `.rsaddin` manifest file should include:
-- `<Dependencies>Online</Dependencies>` (not `None` or `Station`)
-- `<Platform>Any</Platform>`
-
-These match the format used by official ABB add-ins (IOConfigurator, FleetManagement, etc.).
-
-**4. C# language version must be compatible with MSBuild**
-
-When building with `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\MSBuild.exe`, the C# compiler only supports C# 5 syntax. The following C# 6+ features must be avoided:
-- `?.` (null-conditional operator) - use explicit null checks
-- `$""` (string interpolation) - use string concatenation
-- `out var` (inline out variable) - declare variable separately
-- `catch when` (exception filters) - use if-check inside catch block
-
-### "Cannot connect to RobotStudio"
-- Ensure RobotStudio is running
-- Check that the Add-in is loaded (look for `MCP Add-in:` messages in Output window)
-- Verify port 8080 is not blocked by firewall
-- Test with `curl http://localhost:8080/health`
-
-### "No virtual controller found"
-- Open a station in RobotStudio that contains a Virtual Controller
-- The Virtual Controller must be running (started)
-
-### Build errors for SDK references
-- The `.csproj` dynamically resolves the RobotStudio SDK path from `Program Files (x86)` or `Program Files`
-- If your installation is non-standard, update the `<RobotStudioBin>` property in the `.csproj`
-
-## Technical Details
-
-### Architecture
-
-```
-AI Assistant <--MCP--> TypeScript Server <--HTTP--> C# Add-in <--SDK--> RobotStudio
-                        (Node.js)                    (TcpListener        (Virtual
-                        port: stdio                   port: 8080)         Controller)
-```
-
-### Key Implementation Notes
-
-- The C# add-in uses a raw `TcpListener` (not `HttpListener`) to avoid Windows URL ACL permission requirements
-- HTTP parsing is done manually: reads request line + headers + body from the TCP stream
-- The TCP server runs on a background thread with `IsBackground = true` so it doesn't prevent RobotStudio from closing
-- CORS headers are included on all responses for local development
-- The add-in connects to the Virtual Controller via `Controller.Connect(systemId, ConnectionType.RobotStudio)` using the station's `Irc5Controllers` collection
+- Raw `TcpListener` instead of `HttpListener` to avoid Windows URL ACL permission requirements
+- HTTP parsing done manually: reads request line + headers + body from TCP stream
+- Background thread with `IsBackground = true` so it doesn't block RobotStudio shutdown
+- CORS headers on all responses for local development
+- RAPID files written with `UTF8Encoding(false)` (no BOM) and CRLF line endings
+- Module cleanup: deletes all program modules (except BASE and user) before loading to prevent name conflicts
+- Controller write operations require `controller.Logon(UserInfo.DefaultUser)` and `Mastership.Request(controller.Rapid)`
 
 ## License
 
