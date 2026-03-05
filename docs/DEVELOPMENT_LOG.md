@@ -189,6 +189,49 @@ Both patterns then executed successfully.
 
 ---
 
+### Session 6: Drawing Number "2" on the Ground
+
+The operator provided a RAPID program (from a PPU055 lab exercise) that draws the number "2" on a vertical surface using a pen tool, gripper, and custom work objects. The task was to adapt it to draw on a horizontal "ground" surface in simulation using the MCP tools.
+
+**Phase 1: Adapting the original program**
+
+The original program used:
+- Custom tool `PENNTCP` with specific TCP offsets and 45-degree tilt
+- Pen pick/place routines (`HamtaPenna`/`LamnaPenna`) with digital output `grip1`
+- Two work objects (`REFRAM_PAPPER` for pen station, `REFRAM_RUTA2` for drawing)
+- Drawing in the Y-Z plane of the work object, with X as the approach direction
+
+For simulation on the ground, we:
+- Replaced `PENNTCP` with `tool0`
+- Removed pen pick/place routines and signal handling
+- Used proven work object settings from earlier sessions: `[400, 0, 200]` with identity orientation
+- Used `[0, 0, 1, 0]` target orientation (tool pointing down)
+- Added `MoveAbsJ jHome`, `ConfL \Off`, `ConfJ \Off` per established best practices
+
+**Phase 2: First attempt — heart shape**
+
+Remapped the original program's Y-Z coordinates to X-Y for ground drawing. The path traced: bottom-left → up left side → arc over top → down right side → horizontal baseline back to start. This created a closed outline loop that looked like a heart/leaf shape, not the number "2".
+
+The mistake was directly mapping the original coordinate system without reconsidering the stroke path. The original path was designed to trace the outline of a "2" on a vertical surface, but when drawn as a continuous closed loop on the ground, the visual result was wrong.
+
+**Phase 3: Redesigned path — success**
+
+Redesigned the "2" as three open strokes:
+1. Semicircle arc at the top (MoveC, radius 20mm, center at [35,60])
+2. Diagonal line from top-right to bottom-left (MoveL)
+3. Horizontal baseline from left to right (MoveL)
+
+The corrected program uploaded and ran successfully in ~8 seconds. No errors in the event log. Robot returned to home position.
+
+**Technical details of MCP interaction:**
+- Upload via `POST /rapid/upload` using Node.js to properly handle RAPID backslash escaping (`\Off`, `\WObj`) in JSON
+- Direct `curl` failed with "Bad JSON escape sequence: \O" — Newtonsoft.Json on the C# side rejects `\O` as an invalid JSON escape
+- Workaround: Write RAPID code to a .mod file, read it with Node.js `fs.readFileSync()`, and use `JSON.stringify()` for proper escaping
+- Execution via `POST /rapid/execute` with resetpp → start (cycle: once)
+- Status confirmed via `GET /rapid/status` and `GET /rapid/errors`
+
+---
+
 ## Lessons Learned
 
 ### About RobotStudio SDK
@@ -209,6 +252,13 @@ Both patterns then executed successfully.
 4. `ConfL \Off; ConfJ \Off;` disables configuration checking (useful for simulation)
 5. Work object rotation changes tool orientation in world frame — different wrist configuration needed
 6. After a failed run, the robot retains its bad joint positions — must recover first
+
+### About RAPID Upload via JSON
+
+1. RAPID uses backslash for optional arguments (`\Off`, `\WObj`) — these conflict with JSON escape sequences
+2. `curl` with inline JSON fails because `\O` and `\W` are invalid JSON escapes
+3. Best approach: write RAPID code to a .mod file, then use Node.js `JSON.stringify()` to encode it properly
+4. When adapting drawing programs between surface orientations, redesign the stroke path — don't just remap coordinates
 
 ### About the Build System
 
