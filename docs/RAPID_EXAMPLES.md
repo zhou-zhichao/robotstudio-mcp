@@ -262,6 +262,74 @@ ENDMODULE
 
 ---
 
+## Example 5: Draw Number "5" on Ground (Working)
+
+Drawing the number "5" as a single continuous stroke: top horizontal bar, left vertical down, then a bottom C-curve (2 quarter-arcs). No pen lift needed.
+
+Key design decisions:
+- Single continuous stroke — no pen lift
+- Top bar drawn right-to-left, then vertical down, then C-curve
+- Bottom curve split into 2 quarter-arcs (~90° each) to stay under 240° MoveC limit
+- ~40mm wide × 70mm tall character
+
+```rapid
+MODULE DrawModule
+  TASK PERS wobjdata wobjGround := [FALSE, TRUE, "",
+    [[400, 0, 200], [1, 0, 0, 0]],
+    [[0, 0, 0], [1, 0, 0, 0]]];
+
+  CONST jointtarget jHome := [[0, 0, 0, 0, 30, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+
+  CONST robtarget pApproach := [[0, 0, 80], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+
+  ! Single stroke: top bar + left vertical + bottom C-curve
+  CONST robtarget pTopR := [[50, 75, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pTopL := [[10, 75, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pMidL := [[10, 42, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pCV1 := [[40, 40, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pCR := [[50, 28, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pCV2 := [[40, 12, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pBotL := [[10, 8, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pStartUp := [[50, 75, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pEndUp := [[10, 8, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+
+  PROC main()
+    ConfL \Off;
+    ConfJ \Off;
+    MoveAbsJ jHome, v200, fine, tool0;
+    MoveJ pApproach, v500, z50, tool0 \WObj:=wobjGround;
+    DrawFive;
+    MoveJ pApproach, v500, fine, tool0 \WObj:=wobjGround;
+    MoveAbsJ jHome, v200, fine, tool0;
+  ENDPROC
+
+  PROC DrawFive()
+    MoveL pStartUp, v500, z10, tool0 \WObj:=wobjGround;
+    MoveL pTopR, v100, fine, tool0 \WObj:=wobjGround;
+    MoveL pTopL, v100, fine, tool0 \WObj:=wobjGround;
+    MoveL pMidL, v100, fine, tool0 \WObj:=wobjGround;
+    MoveC pCV1, pCR, v100, fine, tool0 \WObj:=wobjGround;
+    MoveC pCV2, pBotL, v100, fine, tool0 \WObj:=wobjGround;
+    MoveL pEndUp, v500, z10, tool0 \WObj:=wobjGround;
+  ENDPROC
+ENDMODULE
+```
+
+**Drawing path:**
+```
+ _________
+|
+|
+ \___
+     \
+ ___/
+```
+Top bar: (50,75)→(10,75). Left vertical: (10,75)→(10,42). Bottom curve: two quarter-arcs from (10,42) via (40,40) to (50,28) then via (40,12) to (10,8).
+
+**Result:** Successful on first attempt. Single continuous stroke, no pen lift. Robot returned to home position. Enable TCP Trace to visualize.
+
+---
+
 ## Failed Attempts (for reference)
 
 ### Ground-level drawing (z=0) — FAILED

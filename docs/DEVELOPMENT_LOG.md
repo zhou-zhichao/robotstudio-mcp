@@ -224,6 +224,10 @@ The "4" uses only MoveL (no arcs), with two strokes and a pen lift between them:
 
 Combined "3" and "4" into a single program using two work objects offset 100mm apart in Y: `wobj3` at [400, 50, 200] and `wobj4` at [400, -50, 200]. The robot draws "3" first, transitions via approach point and MoveJ to the second work object, then draws "4". Ran successfully on the first attempt.
 
+**Phase 6: Drawing "5" — success on first attempt**
+
+The "5" is a single continuous stroke (no pen lift): top horizontal bar right-to-left, vertical down on the left, then a bottom C-curve split into 2 quarter-arcs. Reuses the same arc-splitting pattern from the "3". Ran successfully on the first attempt.
+
 **Technical details of MCP interaction:**
 - Upload via `POST /rapid/upload` using Node.js to properly handle RAPID backslash escaping (`\Off`, `\WObj`) in JSON
 - Direct `curl` failed with "Bad JSON escape sequence: \O" — Newtonsoft.Json on the C# side rejects `\O` as an invalid JSON escape
