@@ -168,27 +168,27 @@ ENDMODULE
 
 ---
 
-## Example 4: Draw Number "2" on Ground (Working)
+## Example 4: Draw Number "3" on Ground (Working)
 
-Drawing the number "2" on a horizontal surface using MoveL and MoveC. The program was iterated twice — the first version accidentally drew a heart/leaf shape due to incorrect path design.
+Drawing the number "3" on a horizontal surface using four `MoveC` arcs. The "3" is two C-shaped arcs stacked vertically, both opening to the left. Each C-arc must be split into two quarter-arcs because a single C-arc (left→right→left) exceeds the 240-degree MoveC limit.
 
 Key design decisions:
 - Work object at [400, 0, 200] — same proven height as previous examples
 - Tool orientation `[0, 0, 1, 0]` — tool pointing straight down
-- Number "2" drawn as 3 strokes: semicircle arc + diagonal line + horizontal baseline
-- Separate approach/retract points above pen-down and pen-up positions
-- ~50mm wide × 70mm tall character
+- Number "3" drawn as 4 quarter-arc `MoveC` segments (~90-110 deg each)
+- ~40mm wide × 70mm tall character
 
-### Attempt 1: Heart shape — WRONG SHAPE
+### Attempt 1: Two MoveC arcs — FAILED
 
-The first version traced a closed outline: up the left side, arc over the top, down the right side, horizontal baseline back to start. This produced a heart/leaf shape instead of a "2". The mistake was mapping the original vertical-surface program's coordinates directly to the ground plane without redesigning the stroke path.
+Used a single `MoveC` for each C-arc (top and bottom half). Error: "Circle uncertain — Circle too large > 240 degrees." A C-shaped arc from left, curving right, back to left naturally spans >240 degrees when the width is significant relative to height.
 
-### Attempt 2: Correct "2" — WORKING
+### Attempt 2: Four quarter-arcs — WORKING
 
-Redesigned the path as an open stroke with 3 segments:
-1. **Top semicircle** — `MoveC` arc from (15,60) via (35,80) to (55,60)
-2. **Diagonal line** — `MoveL` from (55,60) down to (10,10)
-3. **Horizontal baseline** — `MoveL` from (10,10) right to (60,10)
+Split each C-arc into two ~90-degree sub-arcs at the rightmost point:
+1. **Top-upper quarter** — `MoveC` from (10,75) via (40,70) to (50,58)
+2. **Top-lower quarter** — `MoveC` from (50,58) via (40,46) to (15,42)
+3. **Bottom-upper quarter** — `MoveC` from (15,42) via (40,36) to (50,24)
+4. **Bottom-lower quarter** — `MoveC` from (50,24) via (40,12) to (10,8)
 
 ```rapid
 MODULE DrawModule
@@ -200,47 +200,51 @@ MODULE DrawModule
 
   CONST robtarget pApproach := [[0, 0, 80], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
 
-  ! Top curve: semicircle from left to right (center at [35,60], radius 20)
-  CONST robtarget pCurveStart := [[15, 60, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  CONST robtarget pCurveVia := [[35, 80, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  CONST robtarget pCurveEnd := [[55, 60, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  ! Diagonal down to bottom-left
-  CONST robtarget pBottomLeft := [[10, 10, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  ! Baseline to bottom-right
-  CONST robtarget pBottomRight := [[60, 10, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  ! Approach/retract points above pen-down positions
-  CONST robtarget pStartUp := [[15, 60, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  CONST robtarget pEndUp := [[60, 10, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  ! Number "3": two C-arcs, each split into two quarter-arcs (<120 deg each)
+  ! Top arc points
+  CONST robtarget pT1 := [[10, 75, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pT2 := [[40, 70, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pT3 := [[50, 58, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pT4 := [[40, 46, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pMid := [[15, 42, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  ! Bottom arc points
+  CONST robtarget pB1 := [[40, 36, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pB2 := [[50, 24, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pB3 := [[40, 12, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pB4 := [[10, 8, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  ! Approach/retract
+  CONST robtarget pStartUp := [[10, 75, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pEndUp := [[10, 8, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
 
   PROC main()
     ConfL \Off;
     ConfJ \Off;
     MoveAbsJ jHome, v200, fine, tool0;
     MoveJ pApproach, v500, z50, tool0 \WObj:=wobjGround;
-    DrawTwo;
+    DrawThree;
     MoveJ pApproach, v500, fine, tool0 \WObj:=wobjGround;
     MoveAbsJ jHome, v200, fine, tool0;
   ENDPROC
 
-  PROC DrawTwo()
-    ! Lower to start of top curve
+  PROC DrawThree()
     MoveL pStartUp, v500, z10, tool0 \WObj:=wobjGround;
-    MoveL pCurveStart, v100, fine, tool0 \WObj:=wobjGround;
-    ! Draw top semicircle (left to right)
-    MoveC pCurveVia, pCurveEnd, v100, fine, tool0 \WObj:=wobjGround;
-    ! Diagonal line down to bottom-left
-    MoveL pBottomLeft, v100, fine, tool0 \WObj:=wobjGround;
-    ! Horizontal baseline to bottom-right
-    MoveL pBottomRight, v100, fine, tool0 \WObj:=wobjGround;
-    ! Lift pen
+    MoveL pT1, v100, fine, tool0 \WObj:=wobjGround;
+    ! Top arc: upper quarter (top-left to rightmost)
+    MoveC pT2, pT3, v100, fine, tool0 \WObj:=wobjGround;
+    ! Top arc: lower quarter (rightmost to middle)
+    MoveC pT4, pMid, v100, fine, tool0 \WObj:=wobjGround;
+    ! Bottom arc: upper quarter (middle to rightmost)
+    MoveC pB1, pB2, v100, fine, tool0 \WObj:=wobjGround;
+    ! Bottom arc: lower quarter (rightmost to bottom-left)
+    MoveC pB3, pB4, v100, fine, tool0 \WObj:=wobjGround;
     MoveL pEndUp, v500, z10, tool0 \WObj:=wobjGround;
   ENDPROC
 ENDMODULE
 ```
 
-**Result:** Successful. Robot traced the number "2" in ~8 seconds. Program started at 00:29:33, completed at 00:29:41 with status "the task is ready" (normal completion). Robot returned to home position (J1-J4=0, J5=30, J6=0). Enable TCP Trace in RobotStudio to visualize the drawn path.
+**Result:** Successful. Robot traced the number "3" smoothly with 4 arc segments. Completed without errors, robot returned to home position (J1-J4=0, J5=30, J6=0). Enable TCP Trace in RobotStudio to visualize the drawn path.
 
-**Lesson learned:** When adapting a program from one surface orientation to another, don't just remap coordinates — redesign the stroke path. A closed-outline path that looks like a "2" on a vertical surface becomes a heart shape when the stroke order creates a closed loop.
+**Lesson learned:** `MoveC` arcs cannot exceed 240 degrees. C-shaped arcs (left→right→left) inherently span >240°, so they must be split into two sub-arcs at the rightmost point. Each sub-arc is ~90-120 degrees, well within limits.
 
 ---
 

@@ -189,9 +189,9 @@ Both patterns then executed successfully.
 
 ---
 
-### Session 6: Drawing Number "2" on the Ground
+### Session 6: Drawing Number "3" on the Ground
 
-The operator provided a RAPID program (from a PPU055 lab exercise) that draws the number "2" on a vertical surface using a pen tool, gripper, and custom work objects. The task was to adapt it to draw on a horizontal "ground" surface in simulation using the MCP tools.
+The operator provided a RAPID program (from a PPU055 lab exercise) that draws the number "2" on a vertical surface using a pen tool, gripper, and custom work objects. The task was to adapt it to draw a number on a horizontal "ground" surface in simulation using the MCP tools, ultimately changed to draw the number "3".
 
 **Phase 1: Adapting the original program**
 
@@ -208,20 +208,17 @@ For simulation on the ground, we:
 - Used `[0, 0, 1, 0]` target orientation (tool pointing down)
 - Added `MoveAbsJ jHome`, `ConfL \Off`, `ConfJ \Off` per established best practices
 
-**Phase 2: First attempt — heart shape**
+**Phase 2: Drawing "2" — heart shape mistake then fix**
 
-Remapped the original program's Y-Z coordinates to X-Y for ground drawing. The path traced: bottom-left → up left side → arc over top → down right side → horizontal baseline back to start. This created a closed outline loop that looked like a heart/leaf shape, not the number "2".
+First attempt to draw a "2" produced a heart/leaf shape due to a closed-loop path. Redesigned as 3 open strokes (semicircle + diagonal + baseline) and it worked.
 
-The mistake was directly mapping the original coordinate system without reconsidering the stroke path. The original path was designed to trace the outline of a "2" on a vertical surface, but when drawn as a continuous closed loop on the ground, the visual result was wrong.
+**Phase 3: Changed to "3" — MoveC >240° error**
 
-**Phase 3: Redesigned path — success**
+Designed "3" as two C-shaped arcs (top and bottom halves), each a single MoveC. The bottom arc failed with "Circle uncertain — Circle too large > 240 degrees." A C-shape (left→right→left) inherently spans >240° when the bulge is wide enough.
 
-Redesigned the "2" as three open strokes:
-1. Semicircle arc at the top (MoveC, radius 20mm, center at [35,60])
-2. Diagonal line from top-right to bottom-left (MoveL)
-3. Horizontal baseline from left to right (MoveL)
+**Phase 4: Split arcs — success**
 
-The corrected program uploaded and ran successfully in ~8 seconds. No errors in the event log. Robot returned to home position.
+Split each C-arc into two quarter-arcs (~90° each) at the rightmost point. Four `MoveC` segments total. Program ran successfully, no errors.
 
 **Technical details of MCP interaction:**
 - Upload via `POST /rapid/upload` using Node.js to properly handle RAPID backslash escaping (`\Off`, `\WObj`) in JSON
@@ -259,6 +256,7 @@ The corrected program uploaded and ran successfully in ~8 seconds. No errors in 
 2. `curl` with inline JSON fails because `\O` and `\W` are invalid JSON escapes
 3. Best approach: write RAPID code to a .mod file, then use Node.js `JSON.stringify()` to encode it properly
 4. When adapting drawing programs between surface orientations, redesign the stroke path — don't just remap coordinates
+5. `MoveC` arcs cannot exceed 240 degrees — C-shaped arcs (left→right→left) must be split into two sub-arcs at the apex
 
 ### About the Build System
 
