@@ -168,27 +168,16 @@ ENDMODULE
 
 ---
 
-## Example 4: Draw Number "3" on Ground (Working)
+## Example 4: Draw Number "4" on Ground (Working)
 
-Drawing the number "3" on a horizontal surface using four `MoveC` arcs. The "3" is two C-shaped arcs stacked vertically, both opening to the left. Each C-arc must be split into two quarter-arcs because a single C-arc (left→right→left) exceeds the 240-degree MoveC limit.
+Drawing the number "4" on a horizontal surface using only `MoveL` lines. The "4" is two separate strokes: an L-shape (vertical line down + horizontal crossbar) and a full-height vertical line on the right side. Pen lifts between strokes.
 
 Key design decisions:
 - Work object at [400, 0, 200] — same proven height as previous examples
 - Tool orientation `[0, 0, 1, 0]` — tool pointing straight down
-- Number "3" drawn as 4 quarter-arc `MoveC` segments (~90-110 deg each)
+- Number "4" drawn as 2 strokes with pen lift between them
+- All `MoveL` — no arcs needed
 - ~40mm wide × 70mm tall character
-
-### Attempt 1: Two MoveC arcs — FAILED
-
-Used a single `MoveC` for each C-arc (top and bottom half). Error: "Circle uncertain — Circle too large > 240 degrees." A C-shaped arc from left, curving right, back to left naturally spans >240 degrees when the width is significant relative to height.
-
-### Attempt 2: Four quarter-arcs — WORKING
-
-Split each C-arc into two ~90-degree sub-arcs at the rightmost point:
-1. **Top-upper quarter** — `MoveC` from (10,75) via (40,70) to (50,58)
-2. **Top-lower quarter** — `MoveC` from (50,58) via (40,46) to (15,42)
-3. **Bottom-upper quarter** — `MoveC` from (15,42) via (40,36) to (50,24)
-4. **Bottom-lower quarter** — `MoveC` from (50,24) via (40,12) to (10,8)
 
 ```rapid
 MODULE DrawModule
@@ -200,51 +189,59 @@ MODULE DrawModule
 
   CONST robtarget pApproach := [[0, 0, 80], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
 
-  ! Number "3": two C-arcs, each split into two quarter-arcs (<120 deg each)
-  ! Top arc points
-  CONST robtarget pT1 := [[10, 75, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  CONST robtarget pT2 := [[40, 70, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  CONST robtarget pT3 := [[50, 58, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  CONST robtarget pT4 := [[40, 46, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  CONST robtarget pMid := [[15, 42, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  ! Bottom arc points
-  CONST robtarget pB1 := [[40, 36, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  CONST robtarget pB2 := [[50, 24, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  CONST robtarget pB3 := [[40, 12, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  CONST robtarget pB4 := [[10, 8, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  ! Stroke 1: L-shape (down then right)
+  CONST robtarget pA1 := [[10, 70, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pA2 := [[10, 30, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pA3 := [[50, 30, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  ! Stroke 2: vertical line (full height on right side)
+  CONST robtarget pB1 := [[40, 75, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pB2 := [[40, 8, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
   ! Approach/retract
-  CONST robtarget pStartUp := [[10, 75, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  CONST robtarget pEndUp := [[10, 8, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pStartUp := [[10, 70, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pMidUp := [[40, 30, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pB1Up := [[40, 75, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pEndUp := [[40, 8, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
 
   PROC main()
     ConfL \Off;
     ConfJ \Off;
     MoveAbsJ jHome, v200, fine, tool0;
     MoveJ pApproach, v500, z50, tool0 \WObj:=wobjGround;
-    DrawThree;
+    DrawFour;
     MoveJ pApproach, v500, fine, tool0 \WObj:=wobjGround;
     MoveAbsJ jHome, v200, fine, tool0;
   ENDPROC
 
-  PROC DrawThree()
+  PROC DrawFour()
+    ! Stroke 1: L-shape (top-left down to corner, then right)
     MoveL pStartUp, v500, z10, tool0 \WObj:=wobjGround;
-    MoveL pT1, v100, fine, tool0 \WObj:=wobjGround;
-    ! Top arc: upper quarter (top-left to rightmost)
-    MoveC pT2, pT3, v100, fine, tool0 \WObj:=wobjGround;
-    ! Top arc: lower quarter (rightmost to middle)
-    MoveC pT4, pMid, v100, fine, tool0 \WObj:=wobjGround;
-    ! Bottom arc: upper quarter (middle to rightmost)
-    MoveC pB1, pB2, v100, fine, tool0 \WObj:=wobjGround;
-    ! Bottom arc: lower quarter (rightmost to bottom-left)
-    MoveC pB3, pB4, v100, fine, tool0 \WObj:=wobjGround;
+    MoveL pA1, v100, fine, tool0 \WObj:=wobjGround;
+    MoveL pA2, v100, fine, tool0 \WObj:=wobjGround;
+    MoveL pA3, v100, fine, tool0 \WObj:=wobjGround;
+    ! Lift pen
+    MoveL pMidUp, v500, z10, tool0 \WObj:=wobjGround;
+    ! Stroke 2: vertical line on right side (top to bottom)
+    MoveL pB1Up, v500, z10, tool0 \WObj:=wobjGround;
+    MoveL pB1, v100, fine, tool0 \WObj:=wobjGround;
+    MoveL pB2, v100, fine, tool0 \WObj:=wobjGround;
+    ! Lift pen
     MoveL pEndUp, v500, z10, tool0 \WObj:=wobjGround;
   ENDPROC
 ENDMODULE
 ```
 
-**Result:** Successful. Robot traced the number "3" smoothly with 4 arc segments. Completed without errors, robot returned to home position (J1-J4=0, J5=30, J6=0). Enable TCP Trace in RobotStudio to visualize the drawn path.
+**Drawing path:**
+```
+|         |
+|         |
+|_________|
+          |
+          |
+```
+Stroke 1: vertical down (10,70)→(10,30) then horizontal right (10,30)→(50,30).
+Stroke 2: pen lift, then vertical line (40,75)→(40,8) through the crossbar.
 
-**Lesson learned:** `MoveC` arcs cannot exceed 240 degrees. C-shaped arcs (left→right→left) inherently span >240°, so they must be split into two sub-arcs at the rightmost point. Each sub-arc is ~90-120 degrees, well within limits.
+**Result:** Successful. Robot drew the number "4" with two strokes and pen lift. Completed without errors, robot returned to home position (J1-J4=0, J5=30, J6=0). Enable TCP Trace in RobotStudio to visualize the drawn path.
 
 ---
 

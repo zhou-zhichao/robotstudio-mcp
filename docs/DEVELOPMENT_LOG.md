@@ -189,9 +189,9 @@ Both patterns then executed successfully.
 
 ---
 
-### Session 6: Drawing Number "3" on the Ground
+### Session 6: Drawing Numbers on the Ground
 
-The operator provided a RAPID program (from a PPU055 lab exercise) that draws the number "2" on a vertical surface using a pen tool, gripper, and custom work objects. The task was to adapt it to draw a number on a horizontal "ground" surface in simulation using the MCP tools, ultimately changed to draw the number "3".
+The operator provided a RAPID program (from a PPU055 lab exercise) that draws the number "2" on a vertical surface using a pen tool, gripper, and custom work objects. The task was to adapt it to draw numbers on a horizontal "ground" surface in simulation using the MCP tools. The number was iterated through "2" → "3" → "4".
 
 **Phase 1: Adapting the original program**
 
@@ -214,11 +214,11 @@ First attempt to draw a "2" produced a heart/leaf shape due to a closed-loop pat
 
 **Phase 3: Changed to "3" — MoveC >240° error**
 
-Designed "3" as two C-shaped arcs (top and bottom halves), each a single MoveC. The bottom arc failed with "Circle uncertain — Circle too large > 240 degrees." A C-shape (left→right→left) inherently spans >240° when the bulge is wide enough.
+Designed "3" as two C-shaped arcs (top and bottom halves), each a single MoveC. The bottom arc failed with "Circle uncertain — Circle too large > 240 degrees." A C-shape (left→right→left) inherently spans >240° when the bulge is wide enough. Fixed by splitting each arc into two quarter-arcs (~90° each).
 
-**Phase 4: Split arcs — success**
+**Phase 4: Changed to "4" — success on first attempt**
 
-Split each C-arc into two quarter-arcs (~90° each) at the rightmost point. Four `MoveC` segments total. Program ran successfully, no errors.
+The "4" uses only MoveL (no arcs), with two strokes and a pen lift between them: an L-shape (vertical down + horizontal crossbar) and a full-height vertical line on the right side. Ran successfully on the first attempt.
 
 **Technical details of MCP interaction:**
 - Upload via `POST /rapid/upload` using Node.js to properly handle RAPID backslash escaping (`\Off`, `\WObj`) in JSON
