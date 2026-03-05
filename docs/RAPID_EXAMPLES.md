@@ -168,80 +168,97 @@ ENDMODULE
 
 ---
 
-## Example 4: Draw Number "4" on Ground (Working)
+## Example 4: Draw "34" — Two Numbers Side by Side (Working)
 
-Drawing the number "4" on a horizontal surface using only `MoveL` lines. The "4" is two separate strokes: an L-shape (vertical line down + horizontal crossbar) and a full-height vertical line on the right side. Pen lifts between strokes.
+Drawing two numbers ("3" and "4") side by side on a horizontal surface using two work objects offset in Y. Combines the "3" (4 quarter-arc `MoveC`) and "4" (MoveL-only, 2 strokes) from earlier iterations into a single program.
 
 Key design decisions:
-- Work object at [400, 0, 200] — same proven height as previous examples
-- Tool orientation `[0, 0, 1, 0]` — tool pointing straight down
-- Number "4" drawn as 2 strokes with pen lift between them
-- All `MoveL` — no arcs needed
-- ~40mm wide × 70mm tall character
+- Two work objects offset 100mm apart in Y: `wobj3` at [400, 50, 200], `wobj4` at [400, -50, 200]
+- Same robtargets reused for both numbers (work objects handle positioning)
+- Robot moves home → approach wobj3 → draw 3 → approach wobj4 → draw 4 → home
+- "3" uses 4 MoveC arcs, "4" uses MoveL with pen lift
 
 ```rapid
 MODULE DrawModule
-  TASK PERS wobjdata wobjGround := [FALSE, TRUE, "",
-    [[400, 0, 200], [1, 0, 0, 0]],
+  TASK PERS wobjdata wobj3 := [FALSE, TRUE, "",
+    [[400, 50, 200], [1, 0, 0, 0]],
+    [[0, 0, 0], [1, 0, 0, 0]]];
+
+  TASK PERS wobjdata wobj4 := [FALSE, TRUE, "",
+    [[400, -50, 200], [1, 0, 0, 0]],
     [[0, 0, 0], [1, 0, 0, 0]]];
 
   CONST jointtarget jHome := [[0, 0, 0, 0, 30, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
 
   CONST robtarget pApproach := [[0, 0, 80], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
 
-  ! Stroke 1: L-shape (down then right)
+  ! === Number "3" targets (4 quarter-arcs) ===
+  CONST robtarget pT1 := [[10, 75, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pT2 := [[40, 70, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pT3 := [[50, 58, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pT4 := [[40, 46, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pMid3 := [[15, 42, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pB1 := [[40, 36, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pB2 := [[50, 24, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pB3 := [[40, 12, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pB4 := [[10, 8, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pT1Up := [[10, 75, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pB4Up := [[10, 8, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+
+  ! === Number "4" targets (2 strokes) ===
   CONST robtarget pA1 := [[10, 70, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
   CONST robtarget pA2 := [[10, 30, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
   CONST robtarget pA3 := [[50, 30, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  ! Stroke 2: vertical line (full height on right side)
-  CONST robtarget pB1 := [[40, 75, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  CONST robtarget pB2 := [[40, 8, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  ! Approach/retract
-  CONST robtarget pStartUp := [[10, 70, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  CONST robtarget pMidUp := [[40, 30, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  CONST robtarget pB1Up := [[40, 75, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
-  CONST robtarget pEndUp := [[40, 8, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pC1 := [[40, 75, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pC2 := [[40, 8, 0], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pA1Up := [[10, 70, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pA3Up := [[40, 30, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pC1Up := [[40, 75, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
+  CONST robtarget pC2Up := [[40, 8, 40], [0, 0, 1, 0], [0, 0, 0, 0], [9E+09, 9E+09, 9E+09, 9E+09, 9E+09, 9E+09]];
 
   PROC main()
     ConfL \Off;
     ConfJ \Off;
     MoveAbsJ jHome, v200, fine, tool0;
-    MoveJ pApproach, v500, z50, tool0 \WObj:=wobjGround;
+
+    ! Draw "3" (left side)
+    MoveJ pApproach, v500, z50, tool0 \WObj:=wobj3;
+    DrawThree;
+    MoveJ pApproach, v500, z50, tool0 \WObj:=wobj3;
+
+    ! Draw "4" (right side)
+    MoveJ pApproach, v500, z50, tool0 \WObj:=wobj4;
     DrawFour;
-    MoveJ pApproach, v500, fine, tool0 \WObj:=wobjGround;
+    MoveJ pApproach, v500, z50, tool0 \WObj:=wobj4;
+
     MoveAbsJ jHome, v200, fine, tool0;
   ENDPROC
 
+  PROC DrawThree()
+    MoveL pT1Up, v500, z10, tool0 \WObj:=wobj3;
+    MoveL pT1, v100, fine, tool0 \WObj:=wobj3;
+    MoveC pT2, pT3, v100, fine, tool0 \WObj:=wobj3;
+    MoveC pT4, pMid3, v100, fine, tool0 \WObj:=wobj3;
+    MoveC pB1, pB2, v100, fine, tool0 \WObj:=wobj3;
+    MoveC pB3, pB4, v100, fine, tool0 \WObj:=wobj3;
+    MoveL pB4Up, v500, z10, tool0 \WObj:=wobj3;
+  ENDPROC
+
   PROC DrawFour()
-    ! Stroke 1: L-shape (top-left down to corner, then right)
-    MoveL pStartUp, v500, z10, tool0 \WObj:=wobjGround;
-    MoveL pA1, v100, fine, tool0 \WObj:=wobjGround;
-    MoveL pA2, v100, fine, tool0 \WObj:=wobjGround;
-    MoveL pA3, v100, fine, tool0 \WObj:=wobjGround;
-    ! Lift pen
-    MoveL pMidUp, v500, z10, tool0 \WObj:=wobjGround;
-    ! Stroke 2: vertical line on right side (top to bottom)
-    MoveL pB1Up, v500, z10, tool0 \WObj:=wobjGround;
-    MoveL pB1, v100, fine, tool0 \WObj:=wobjGround;
-    MoveL pB2, v100, fine, tool0 \WObj:=wobjGround;
-    ! Lift pen
-    MoveL pEndUp, v500, z10, tool0 \WObj:=wobjGround;
+    MoveL pA1Up, v500, z10, tool0 \WObj:=wobj4;
+    MoveL pA1, v100, fine, tool0 \WObj:=wobj4;
+    MoveL pA2, v100, fine, tool0 \WObj:=wobj4;
+    MoveL pA3, v100, fine, tool0 \WObj:=wobj4;
+    MoveL pA3Up, v500, z10, tool0 \WObj:=wobj4;
+    MoveL pC1Up, v500, z10, tool0 \WObj:=wobj4;
+    MoveL pC1, v100, fine, tool0 \WObj:=wobj4;
+    MoveL pC2, v100, fine, tool0 \WObj:=wobj4;
+    MoveL pC2Up, v500, z10, tool0 \WObj:=wobj4;
   ENDPROC
 ENDMODULE
 ```
 
-**Drawing path:**
-```
-|         |
-|         |
-|_________|
-          |
-          |
-```
-Stroke 1: vertical down (10,70)→(10,30) then horizontal right (10,30)→(50,30).
-Stroke 2: pen lift, then vertical line (40,75)→(40,8) through the crossbar.
-
-**Result:** Successful. Robot drew the number "4" with two strokes and pen lift. Completed without errors, robot returned to home position (J1-J4=0, J5=30, J6=0). Enable TCP Trace in RobotStudio to visualize the drawn path.
+**Result:** Successful. Robot drew "3" then "4" side by side. Completed without errors, robot returned to home position (J1-J4=0, J5=30, J6=0). Enable TCP Trace in RobotStudio to visualize both numbers.
 
 ---
 
