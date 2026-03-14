@@ -85,6 +85,29 @@ interface RapidStatusResponse {
   tasks: TaskStatusData[];
 }
 
+interface RapidSourceResponse {
+  success: boolean;
+  taskName: string;
+  moduleName: string;
+  filePath: string;
+  code: string;
+}
+
+interface RapidModuleInfo {
+  name: string;
+  isSystem: boolean;
+}
+
+interface RapidTaskModulesData {
+  taskName: string;
+  modules: RapidModuleInfo[];
+}
+
+interface RapidModulesListResponse {
+  success: boolean;
+  tasks: RapidTaskModulesData[];
+}
+
 interface EventLogMessageData {
   sequenceNumber: number;
   timestamp: string;
@@ -97,6 +120,16 @@ interface EventLogMessageData {
 interface EventLogResponse {
   success: boolean;
   messages: EventLogMessageData[];
+}
+
+interface ScreenshotResponse {
+  success: boolean;
+  message: string;
+  imageBase64: string;
+  width: number;
+  height: number;
+  mimeType: string;
+  timestamp: string;
 }
 
 /**
@@ -310,12 +343,64 @@ function createServer(): Server {
         },
       },
       {
+        name: "get_rapid_module_source",
+        description:
+          "Read the current RAPID module source code from the RobotStudio virtual controller. When moduleName is omitted, the first non-system program module in the task is returned.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            taskName: {
+              type: "string",
+              description:
+                "RAPID task name. Defaults to 'T_ROB1'.",
+            },
+            moduleName: {
+              type: "string",
+              description:
+                "Module name to read. Defaults to the first non-system module in the task.",
+            },
+          },
+          required: [],
+        },
+      },
+      {
+        name: "list_rapid_modules",
+        description:
+          "List all RAPID modules loaded in the virtual controller, grouped by task. Shows module names and whether each is a system module. Useful for discovering available modules before reading their source code with get_rapid_module_source.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {},
+          required: [],
+        },
+      },
+      {
         name: "get_execution_errors",
         description:
           "Read recent entries from the controller event log including errors, warnings, and informational messages. Returns up to 50 most recent entries sorted by newest first.",
         inputSchema: {
           type: "object" as const,
           properties: {},
+          required: [],
+        },
+      },
+      {
+        name: "get_screenshot",
+        description:
+          "Capture a screenshot of the current RobotStudio 3D view. Returns an image showing the current state of the station including robot position, workpieces, and simulation state. Useful for visually verifying robot positions, paths, and scene layout.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            width: {
+              type: "number",
+              description:
+                "Image width in pixels (default 1280, max 3840).",
+            },
+            height: {
+              type: "number",
+              description:
+                "Image height in pixels (default 720, max 2160).",
+            },
+          },
           required: [],
         },
       },
@@ -540,6 +625,67 @@ function createServer(): Server {
         };
       }
 
+      case "get_rapid_module_source": {
+        const sourceArgs = args as {
+          taskName?: string;
+          moduleName?: string;
+        };
+
+        const sourceResponse = await fetchFromRobotStudio<RapidSourceResponse>(
+          "/rapid/source",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              taskName: sourceArgs?.taskName || "T_ROB1",
+              moduleName: sourceArgs?.moduleName,
+            }),
+          },
+          30000
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: [
+                `Task: ${sourceResponse.taskName}`,
+                `Module: ${sourceResponse.moduleName}`,
+                `File: ${sourceResponse.filePath}`,
+                ``,
+                sourceResponse.code,
+              ].join("\n"),
+            },
+          ],
+        };
+      }
+
+      case "list_rapid_modules": {
+        const modulesResponse =
+          await fetchFromRobotStudio<RapidModulesListResponse>(
+            "/rapid/modules"
+          );
+
+        const lines: string[] = ["RAPID Modules in Controller:", ""];
+
+        for (const task of modulesResponse.tasks) {
+          lines.push(`Task: ${task.taskName}`);
+          for (const mod of task.modules) {
+            const tag = mod.isSystem ? " [system]" : "";
+            lines.push(`  - ${mod.name}${tag}`);
+          }
+          lines.push("");
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: lines.join("\n"),
+            },
+          ],
+        };
+      }
+
       case "get_execution_errors": {
         const errorLogResponse =
           await fetchFromRobotStudio<EventLogResponse>("/rapid/errors");
@@ -578,6 +724,41 @@ function createServer(): Server {
             {
               type: "text",
               text: errorLines.join("\n"),
+            },
+          ],
+        };
+      }
+
+      case "get_screenshot": {
+        const screenshotArgs = args as {
+          width?: number;
+          height?: number;
+        };
+
+        const body: Record<string, number> = {};
+        if (screenshotArgs?.width) body.width = screenshotArgs.width;
+        if (screenshotArgs?.height) body.height = screenshotArgs.height;
+
+        const screenshotResponse =
+          await fetchFromRobotStudio<ScreenshotResponse>(
+            "/screenshot",
+            {
+              method: "POST",
+              body: JSON.stringify(body),
+            },
+            20000 // 20s timeout — screenshot may take time on UI thread
+          );
+
+        return {
+          content: [
+            {
+              type: "image",
+              data: screenshotResponse.imageBase64,
+              mimeType: screenshotResponse.mimeType,
+            },
+            {
+              type: "text",
+              text: `Screenshot captured: ${screenshotResponse.width}x${screenshotResponse.height} | ${screenshotResponse.timestamp}`,
             },
           ],
         };

@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -8,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ABB.Robotics.RobotStudio;
 using ABB.Robotics.RobotStudio.Stations;
+using ABB.Robotics.RobotStudio.Stations.Forms;
 using ABB.Robotics.Controllers;
 using ABB.Robotics.Controllers.MotionDomain;
 using ABB.Robotics.Controllers.RapidDomain;
@@ -211,9 +214,21 @@ namespace RobotStudioMcpAddin
                             if (method != "GET") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
                             responseJson = HandleRapidStatus(out statusCode);
                             break;
+                        case "/rapid/source":
+                            if (method != "POST") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
+                            responseJson = HandleRapidSource(body, out statusCode);
+                            break;
+                        case "/rapid/modules":
+                            if (method != "GET") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
+                            responseJson = HandleListModules(out statusCode);
+                            break;
                         case "/rapid/errors":
                             if (method != "GET") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
                             responseJson = HandleGetErrors(out statusCode);
+                            break;
+                        case "/screenshot":
+                            if (method != "GET" && method != "POST") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
+                            responseJson = HandleScreenshot(body, out statusCode);
                             break;
                         default:
                             statusCode = 404;
@@ -221,7 +236,7 @@ namespace RobotStudioMcpAddin
                             {
                                 Success = false,
                                 Error = "Not Found",
-                                Message = "Endpoint '" + path + "' not found. Available: /health, /joints, /status, /simulation, /rapid/upload, /rapid/execute, /rapid/status, /rapid/errors"
+                                Message = "Endpoint '" + path + "' not found. Available: /health, /joints, /status, /simulation, /rapid/upload, /rapid/execute, /rapid/status, /rapid/source, /rapid/modules, /rapid/errors, /screenshot"
                             });
                             break;
                     }
@@ -823,6 +838,174 @@ namespace RobotStudioMcpAddin
             }
         }
 
+        private static string HandleListModules(out int statusCode)
+        {
+            try
+            {
+                var station = Project.ActiveProject as Station;
+                if (station == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Active Station", Message = "No station is currently open in RobotStudio." });
+                }
+
+                Controller controller = TryGetController(station);
+                if (controller == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Controller", Message = "No virtual controller found in the station." });
+                }
+
+                using (controller)
+                {
+                    controller.Logon(UserInfo.DefaultUser);
+
+                    var tasksResult = new List<RapidTaskModulesData>();
+                    ABB.Robotics.Controllers.RapidDomain.Task[] tasks = controller.Rapid.GetTasks();
+
+                    foreach (var task in tasks)
+                    {
+                        var taskData = new RapidTaskModulesData
+                        {
+                            TaskName = task.Name,
+                            Modules = new List<RapidModuleInfo>()
+                        };
+
+                        ABB.Robotics.Controllers.RapidDomain.Module[] modules = task.GetModules();
+                        foreach (var module in modules)
+                        {
+                            taskData.Modules.Add(new RapidModuleInfo
+                            {
+                                Name = module.Name,
+                                IsSystem = module.IsSystem
+                            });
+                        }
+
+                        tasksResult.Add(taskData);
+                    }
+
+                    statusCode = 200;
+                    return JsonConvert.SerializeObject(new RapidModulesListResponse
+                    {
+                        Success = true,
+                        Tasks = tasksResult
+                    }, Formatting.Indented);
+                }
+            }
+            catch (Exception ex)
+            {
+                statusCode = 500;
+                return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "List Modules Error", Message = ex.Message });
+            }
+        }
+
+        private static string HandleRapidSource(string body, out int statusCode)
+        {
+            try
+            {
+                RapidSourceRequest request;
+                if (string.IsNullOrWhiteSpace(body))
+                    request = new RapidSourceRequest();
+                else
+                    request = JsonConvert.DeserializeObject<RapidSourceRequest>(body) ?? new RapidSourceRequest();
+
+                string taskName = string.IsNullOrEmpty(request.TaskName) ? "T_ROB1" : request.TaskName;
+
+                var station = Project.ActiveProject as Station;
+                if (station == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Active Station", Message = "No station is currently open in RobotStudio." });
+                }
+
+                Controller controller = TryGetController(station);
+                if (controller == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Controller", Message = "No virtual controller found in the station." });
+                }
+
+                using (controller)
+                {
+                    controller.Logon(UserInfo.DefaultUser);
+
+                    ABB.Robotics.Controllers.RapidDomain.Task rapidTask = controller.Rapid.GetTask(taskName);
+                    if (rapidTask == null)
+                    {
+                        statusCode = 404;
+                        return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Task Not Found", Message = "RAPID task '" + taskName + "' not found." });
+                    }
+
+                    string moduleName = request.ModuleName;
+                    if (string.IsNullOrEmpty(moduleName))
+                    {
+                        ABB.Robotics.Controllers.RapidDomain.Module[] modules = rapidTask.GetModules();
+                        for (int i = 0; i < modules.Length; i++)
+                        {
+                            string candidate = modules[i].Name;
+                            if (string.Equals(candidate, "BASE", StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(candidate, "user", StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
+
+                            moduleName = candidate;
+                            break;
+                        }
+                    }
+
+                    if (string.IsNullOrEmpty(moduleName))
+                    {
+                        statusCode = 404;
+                        return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Module Not Found", Message = "No non-system RAPID module found in task '" + taskName + "'." });
+                    }
+
+                    ABB.Robotics.Controllers.RapidDomain.Module module = rapidTask.GetModule(moduleName);
+                    if (module == null)
+                    {
+                        statusCode = 404;
+                        return JsonConvert.SerializeObject(new ErrorResponse
+                        {
+                            Success = false,
+                            Error = "Module Not Found",
+                            Message = "RAPID module '" + moduleName + "' not found in task '" + taskName + "'."
+                        });
+                    }
+
+                    string tempDir = Path.Combine(Path.GetTempPath(), "rsmcp_" + Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(tempDir);
+                    string tempFileName = module.Name + (module.IsSystem ? ".sys" : ".mod");
+                    string tempFilePath = Path.Combine(tempDir, tempFileName);
+
+                    try
+                    {
+                        module.SaveToFile(tempDir);
+                        string sourceCode = File.ReadAllText(tempFilePath, Encoding.UTF8);
+
+                        statusCode = 200;
+                        return JsonConvert.SerializeObject(new RapidSourceResponse
+                        {
+                            Success = true,
+                            TaskName = taskName,
+                            ModuleName = module.Name,
+                            FilePath = tempFilePath,
+                            Code = sourceCode
+                        }, Formatting.Indented);
+                    }
+                    finally
+                    {
+                        try { Directory.Delete(tempDir, true); }
+                        catch { }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                statusCode = 500;
+                return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "RAPID Source Error", Message = ex.Message });
+            }
+        }
+
         private static string HandleGetErrors(out int statusCode)
         {
             try
@@ -928,6 +1111,139 @@ namespace RobotStudioMcpAddin
             }
         }
 
+        private static string HandleScreenshot(string body, out int statusCode)
+        {
+            try
+            {
+                var station = Project.ActiveProject as Station;
+                if (station == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse
+                    {
+                        Success = false,
+                        Error = "No Active Station",
+                        Message = "No station is currently open in RobotStudio."
+                    });
+                }
+
+                // Parse optional width/height from request body
+                int width = 1280;
+                int height = 720;
+                if (!string.IsNullOrWhiteSpace(body))
+                {
+                    try
+                    {
+                        var req = JsonConvert.DeserializeObject<ScreenshotRequest>(body);
+                        if (req != null)
+                        {
+                            if (req.Width > 0) width = Math.Min(req.Width, 3840);
+                            if (req.Height > 0) height = Math.Min(req.Height, 2160);
+                        }
+                    }
+                    catch { /* use defaults */ }
+                }
+
+                // GraphicControl.ScreenShot must run on the UI thread
+                string base64Data = null;
+                Exception captureError = null;
+                int actualWidth = width;
+                int actualHeight = height;
+
+                var gc = GraphicControl.ActiveGraphicControl;
+                if (gc == null)
+                {
+                    statusCode = 500;
+                    return JsonConvert.SerializeObject(new ErrorResponse
+                    {
+                        Success = false,
+                        Error = "No Graphic Control",
+                        Message = "No active 3D view found in RobotStudio."
+                    });
+                }
+
+                var waitHandle = new ManualResetEvent(false);
+
+                // Marshal to the UI thread via Control.Invoke (it's a WinForms UserControl)
+                gc.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        using (Bitmap bmp = gc.ScreenShot(width, height))
+                        {
+                            if (bmp != null)
+                            {
+                                actualWidth = bmp.Width;
+                                actualHeight = bmp.Height;
+                                using (var ms = new MemoryStream())
+                                {
+                                    bmp.Save(ms, ImageFormat.Png);
+                                    base64Data = Convert.ToBase64String(ms.ToArray());
+                                }
+                            }
+                            else
+                            {
+                                captureError = new Exception("ScreenShot returned null.");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        captureError = ex;
+                    }
+                    finally
+                    {
+                        waitHandle.Set();
+                    }
+                }));
+
+                // Wait up to 15 seconds for the UI thread to complete
+                if (!waitHandle.WaitOne(15000))
+                {
+                    statusCode = 500;
+                    return JsonConvert.SerializeObject(new ErrorResponse
+                    {
+                        Success = false,
+                        Error = "Timeout",
+                        Message = "Screenshot capture timed out waiting for the UI thread."
+                    });
+                }
+
+                if (captureError != null)
+                {
+                    statusCode = 500;
+                    return JsonConvert.SerializeObject(new ErrorResponse
+                    {
+                        Success = false,
+                        Error = "Screenshot Failed",
+                        Message = "Failed to capture screenshot: " + captureError.Message
+                    });
+                }
+
+                statusCode = 200;
+                return JsonConvert.SerializeObject(new ScreenshotResponse
+                {
+                    Success = true,
+                    Message = "Screenshot captured successfully.",
+                    ImageBase64 = base64Data,
+                    Width = actualWidth,
+                    Height = actualHeight,
+                    MimeType = "image/png",
+                    Timestamp = DateTime.UtcNow.ToString("o")
+                });
+            }
+            catch (Exception ex)
+            {
+                statusCode = 500;
+                return JsonConvert.SerializeObject(new ErrorResponse
+                {
+                    Success = false,
+                    Error = "Internal Error",
+                    Message = "Screenshot error: " + ex.Message
+                });
+            }
+        }
+
         #endregion
     }
 
@@ -1019,6 +1335,40 @@ namespace RobotStudioMcpAddin
         [JsonProperty("tasks")] public List<TaskStatusData> Tasks { get; set; }
     }
 
+    // RAPID Modules List
+    public class RapidModulesListResponse
+    {
+        [JsonProperty("success")] public bool Success { get; set; }
+        [JsonProperty("tasks")] public List<RapidTaskModulesData> Tasks { get; set; }
+    }
+
+    public class RapidTaskModulesData
+    {
+        [JsonProperty("taskName")] public string TaskName { get; set; }
+        [JsonProperty("modules")] public List<RapidModuleInfo> Modules { get; set; }
+    }
+
+    public class RapidModuleInfo
+    {
+        [JsonProperty("name")] public string Name { get; set; }
+        [JsonProperty("isSystem")] public bool IsSystem { get; set; }
+    }
+
+    public class RapidSourceRequest
+    {
+        [JsonProperty("taskName")] public string TaskName { get; set; }
+        [JsonProperty("moduleName")] public string ModuleName { get; set; }
+    }
+
+    public class RapidSourceResponse
+    {
+        [JsonProperty("success")] public bool Success { get; set; }
+        [JsonProperty("taskName")] public string TaskName { get; set; }
+        [JsonProperty("moduleName")] public string ModuleName { get; set; }
+        [JsonProperty("filePath")] public string FilePath { get; set; }
+        [JsonProperty("code")] public string Code { get; set; }
+    }
+
     public class TaskStatusData
     {
         [JsonProperty("name")] public string Name { get; set; }
@@ -1051,6 +1401,24 @@ namespace RobotStudioMcpAddin
         [JsonProperty("body")] public string Body { get; set; }
         [JsonProperty("categoryName")] public string CategoryName { get; set; }
         [JsonProperty("type")] public string Type { get; set; }
+    }
+
+    // Screenshot
+    public class ScreenshotRequest
+    {
+        [JsonProperty("width")] public int Width { get; set; }
+        [JsonProperty("height")] public int Height { get; set; }
+    }
+
+    public class ScreenshotResponse
+    {
+        [JsonProperty("success")] public bool Success { get; set; }
+        [JsonProperty("message")] public string Message { get; set; }
+        [JsonProperty("imageBase64")] public string ImageBase64 { get; set; }
+        [JsonProperty("width")] public int Width { get; set; }
+        [JsonProperty("height")] public int Height { get; set; }
+        [JsonProperty("mimeType")] public string MimeType { get; set; }
+        [JsonProperty("timestamp")] public string Timestamp { get; set; }
     }
 
     #endregion

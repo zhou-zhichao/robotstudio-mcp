@@ -237,6 +237,178 @@ The "5" is a single continuous stroke (no pen lift): top horizontal bar right-to
 
 ---
 
+### Session 7: First Green Box on Orange Side Experiment
+
+**Goal:** Modify the existing pick & place program so the first green (large/gr) box is placed on the orange (small/pq) side instead of its normal location.
+
+**Understanding the original code:**
+
+The program (Module1 + CalibData) implements a conveyor pick & place system:
+- `create_box` generates 3 small (orange) + 3 large (green) boxes alternately on a conveyor
+- Sensors detect box type: `DI_Sensor_Inf=1, DI_Sensor_Sup=0` → small (orange), `DI_Sensor_Inf=1, DI_Sensor_Sup=1` → large (green)
+- Small boxes picked at z=80mm, placed at `WO_Place_pq` [522, -650, -259]
+- Large boxes picked at z=180mm, placed at `WO_Place_gr` [566, 1365, -259]
+- Stacking offsets: `off_pq` increments by `height_pq=100`, `off_gr` increments by `height_gr=200`
+
+**New feature — used `GET /rapid/source` endpoint:**
+
+This session was the first to use the newly added `GET /rapid/modules` and `POST /rapid/source` endpoints to read RAPID code directly from the virtual controller. This allowed reading both Module1 and CalibData source code without needing the human operator to copy-paste.
+
+**Code modification:**
+
+Added a `VAR num green_count:=0;` counter and modified `PathCaja_gr`:
+```rapid
+PROC PathCaja_gr()
+    Path_Pick_gr;
+    IF green_count = 0 THEN
+        ! EXPERIMENT: First green box goes to orange (pq) side
+        Path_Place_pq;
+    ELSE
+        Path_Place_gr;
+    ENDIF
+    green_count:=green_count+1;
+ENDPROC
+```
+
+**Failure 1: Upload deleted CalibData**
+
+The `/rapid/upload` endpoint deletes ALL non-system modules before loading the new one. This means uploading Module1 also deleted CalibData (which contained `TCP_VentosaTool`, `WO_Pick`, `WO_Place_pq`, `WO_Place_gr`). Module1 loaded but had RAPID errors because all tool/wobj references were undefined.
+
+Error message: `"Errors in RAPID program: Task T_ROB1: There are errors in the RAPID program."`
+
+**Fix:** Merged CalibData declarations directly into Module1:
+```rapid
+PERS tooldata TCP_VentosaTool:=[TRUE,[[0,0,184],[1,0,0,0]],[1,[0,-0.818,79.529],[1,0,0,0],0,0,0]];
+TASK PERS wobjdata WO_Pick:=[FALSE,TRUE,"",[[846,535,176],[1,0,0,0]],[[0,0,0],[1,0,0,0]]];
+TASK PERS wobjdata WO_Place_pq:=[FALSE,TRUE,"",[[522,-650,-259],[1,0,0,0]],[[0,0,0],[1,0,0,0]]];
+TASK PERS wobjdata WO_Place_gr:=[FALSE,TRUE,"",[[566,1365,-259],[1,0,0,0]],[[0,0,0],[1,0,0,0]]];
+```
+
+**Attempt 2: Upload merged module — success**
+
+With all declarations in a single Module1, the upload succeeded. The program ran through:
+1. Created 3 small + 3 large boxes on conveyor
+2. First orange box → picked → placed on pq side ✓
+3. First green box → picked → **placed on pq side** (experiment!) ✓
+4. Subsequent orange boxes → placed on pq side ✓
+5. Subsequent green boxes → placed on gr side (normal behavior) ✓
+
+The operator confirmed: "已经成功运行了" (successfully running).
+
+**Observation:** The `Path_Place_pq` uses `off_pq` offset and increments by `height_pq=100`. Since the green box (height 200mm) was placed with a 100mm offset increment, the stacking height calculation may not be physically accurate for the green box. However, the robot motion executed without errors.
+
+**Failure 2: Green box knocks orange box off — release too deep (+40)**
+
+Using the original `Path_Place_pq` (release clearance +40mm), the green box (200mm tall) descends too far. Its bottom hits the already-placed orange box and pushes it off the shelf. The +40 clearance was calibrated for the small 100mm box.
+
+**Failure 3: Added +100mm extra offset to off_pq — J3 out of range**
+
+Attempted to raise the placement by adding `off_pq := off_pq + (height_gr - height_pq)` (+100mm) before calling `Path_Place_pq`. This pushed the release point to z=484 in the work object frame. Error: "Position outside reach — Joint 3 outside working area." The pq placement location is near the edge of the IRB120's workspace, and the extra height exceeded J3 limits.
+
+**Failure 4: Changed create_box WaitTime from 2→5 — robot stops picking**
+
+Increased WaitTime between box creations to prevent conveyor overlap. But `create_box` now took 30 seconds (instead of 12), and boxes arrived at the sensor during `create_box` before the WHILE loop started. They passed through without being detected. The robot never entered the picking loop.
+
+**Failure 5: Restructured to sequential create-one-pick-one — lost parallelism**
+
+Changed main() to create one box → WaitUntil sensor → pick, repeating in a FOR loop. This eliminated overlapping but also eliminated the conveyor parallelism. The operator wanted box creation and picking to happen concurrently (original behavior).
+
+**Failure 6: Restored original create_box — conveyor box overlap returned**
+
+Reverted to original `create_box` (WaitTime 2) + WHILE TRUE loop. Boxes overlapped again on the conveyor after simulation reset. This appeared to be a simulation state issue — the conveyor speed or Smart Component state was inconsistent after multiple resets and module reloads.
+
+**Failure 7: Green box release at +90mm — suction cup doesn't release**
+
+Created a dedicated `Path_Place_gr_on_pq` procedure with +90mm release clearance (instead of +40). The green box stayed attached and was carried back to the conveyor. **Root cause (corrected):** +90mm is still far too low for a 200mm green box. The TCP needs to be at `off_pq+140` to reach the box top surface. At +90, the TCP is still 50mm inside the box mesh — the Smart Component cannot release when the suction cup is embedded inside the geometry.
+
+**Failure 8: +60mm release — suction cup still doesn't release**
+
+Same root cause as Failure 7. At +60, the TCP is 80mm inside the 200mm green box. Even +40 (which barely works for 100mm orange) leaves the TCP 100mm inside the green box. The correct offset for green on pq side is **+140** (= +40 + height difference of 100mm).
+
+**Attempt 9: Reverted to original +40mm — green box placed successfully!**
+
+Went back to using the original `Path_Place_pq` with +40mm clearance. The green box was successfully placed on the orange (pq) side — the suction released and the box stayed.
+
+**Failure 9: Second orange box placed too low — clipping through green box**
+
+After the green box was placed, `off_pq` was only incremented by `height_pq` (100mm) instead of `height_gr` (200mm). The second orange box was placed at a height that assumed a 100mm-tall box below it, but the green box is 200mm tall. The orange box clipped through the top of the green box.
+
+```rapid
+PROC Path_Place_gr_on_pq()
+    MoveJ Target_60_pq,v1000,z100,TCP_VentosaTool\WObj:=WO_Place_pq;
+    MoveL offs(Target_50_pq,0,0,off_pq),v1000,z100,TCP_VentosaTool\WObj:=WO_Place_pq;
+    MoveLDO offs(Target_40_Place_pq,0,0,off_pq+60),v500,fine,TCP_VentosaTool\WObj:=WO_Place_pq,DO_Ventosa,0;
+    WaitTime 1;
+    MoveL offs(Target_50_pq,0,0,off_pq),v1000,z100,TCP_VentosaTool\WObj:=WO_Place_pq;
+    off_pq:=off_pq+height_gr;
+    MoveL Target_60_pq,v1000,z100,TCP_VentosaTool\WObj:=WO_Place_pq;
+    MoveJ HOME,v1000,z100,TCP_VentosaTool\WObj:=wobj0;
+ENDPROC
+```
+
+**Failure 10: Added off_pq correction AFTER Path_Place_pq — green box won't release again**
+
+After Failure 9, added `off_pq := off_pq + (height_gr - height_pq)` AFTER `Path_Place_pq` in `PathCaja_gr` (green_count=0 branch). This line only affects the NEXT box's placement height, not the current release point. However, the green box again failed to detach from the suction cup. The robot carried it back without releasing.
+
+This is puzzling because the identical `Path_Place_pq` with +40mm clearance worked in Attempt 9. The only code difference is the extra offset line AFTER the placement call. Possible causes:
+- Simulation state inconsistency after reset (suction cup Smart Component may behave differently across resets)
+- The added line itself is not the cause — this may be a non-deterministic simulation issue with the suction release at +40mm being at the edge of the contact threshold
+
+```rapid
+PROC PathCaja_gr()
+    Path_Pick_gr;
+    IF green_count = 0 THEN
+        ! EXPERIMENT: First green box goes to orange (pq) side
+        Path_Place_pq;
+        ! Correct offset: green box is 200mm tall, Path_Place_pq only added 100mm
+        off_pq:=off_pq+(height_gr-height_pq);
+    ELSE
+        Path_Place_gr;
+    ENDIF
+    green_count:=green_count+1;
+ENDPROC
+```
+
+**Attempt 11: Release offset +140mm — SUCCESS ✓**
+
+After the human operator corrected the AI's misunderstanding of the failure mechanism, the root cause became clear: the TCP (suction cup) was ending up **inside the box mesh** at release time. The fix was purely geometric:
+
+- Orange box (100mm) on pq side: `+40` works → TCP at box top ✓
+- Green box (200mm) on gr side: `+40` works → Target_40_Place_gr base Z is 100mm higher (344 vs 244), compensating for the taller box ✓
+- Green box (200mm) on pq side: needs `+140` = `+40 + (200-100)` → TCP at box top ✓
+
+All previous attempts (+5, +40, +60, +90) failed because the TCP was 50–135mm inside the green box mesh. With +140, the TCP is exactly at the green box top surface, and the Smart Component releases cleanly.
+
+```rapid
+PROC Path_Place_gr_on_pq()
+    ! Green box (200mm) on pq side: release offset = +140mm
+    ! Formula: orange +40 works for 100mm box. Green needs +40+(200-100)=+140
+    ! so TCP is at the box top surface, not inside the box mesh.
+    MoveJ Target_60_pq,v1000,z100,TCP_VentosaTool\WObj:=WO_Place_pq;
+    MoveL offs(Target_50_pq,0,0,off_pq),v1000,z100,TCP_VentosaTool\WObj:=WO_Place_pq;
+    MoveLDO offs(Target_40_Place_pq,0,0,off_pq+140),v500,fine,TCP_VentosaTool\WObj:=WO_Place_pq,DO_Ventosa,0;
+    WaitTime 1;
+    MoveL offs(Target_50_pq,0,0,off_pq),v1000,z100,TCP_VentosaTool\WObj:=WO_Place_pq;
+    off_pq:=off_pq+height_gr;
+    MoveL Target_60_pq,v1000,z100,TCP_VentosaTool\WObj:=WO_Place_pq;
+    MoveJ HOME,v1000,z100,TCP_VentosaTool\WObj:=wobj0;
+ENDPROC
+```
+
+The original `create_box` order (orange first) was restored — the issue was never about box arrival order, but about the release height calculation.
+
+**Lessons learned:**
+1. The upload endpoint's "delete all modules" behavior is destructive — must merge or upload modules in dependency order
+2. Reading RAPID source via API (`/rapid/source`) is much faster than manual copy-paste for understanding existing code
+3. Simple IF/counter logic in RAPID works well for conditional placement behavior
+4. When merging modules, `TASK PERS` and `PERS` declarations can coexist in a single module
+5. ~~RobotStudio suction cup Smart Components require physical surface contact to release — releasing in mid-air keeps the box attached~~ **CORRECTED:** The real issue is that when the TCP (suction cup) descends too low, it ends up **physically inside the box mesh**. The Smart Component cannot release the suction when the cup is embedded inside the geometry. The box doesn't need to "touch the surface" — the TCP just needs to be **at or above the box top surface** when releasing.
+6. Placement clearance values are tightly coupled to box dimensions — the release offset must account for box height so the TCP stays at the box top surface. Formula: for pq side, orange (100mm) uses +40, green (200mm) needs +40+(200-100)=**+140**. For gr side, +40 already works for 200mm green because Target_40_Place_gr has a higher base Z (344 vs 244).
+7. The create_box timing and conveyor parallelism are tightly coupled — `create_box` must finish quickly so the WHILE sensor loop starts before boxes pass the sensor
+8. When the pq placement is near the robot's workspace boundary, adding height offsets can push J3 out of range — there is a narrow window between "too deep" and "out of reach"
+
+---
+
 ## Lessons Learned
 
 ### About RobotStudio SDK
