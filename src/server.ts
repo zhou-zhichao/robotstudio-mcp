@@ -522,7 +522,7 @@ function createServer(): Server {
       {
         name: "get_scene_objects",
         description:
-          "Read the positions and orientations of all objects (parts, mechanisms, tools, work objects) in the RobotStudio station scene graph. Returns a hierarchical tree with each object's name, type, position (x,y,z in mm), orientation (quaternion q1-q4), and visibility. Use nameFilter to search for specific objects by name. Useful for understanding the scene layout, tracking object positions during simulation, and verifying pick/place locations.",
+          "Read positions and orientations of objects in the RobotStudio station scene graph. Returns a tree with name, type, position (x,y,z mm, g=global/l=local), euler angles (rx,ry,rz deg), and visibility. Use nameFilter to search by name.",
         inputSchema: {
           type: "object" as const,
           properties: {
@@ -603,18 +603,8 @@ function createServer(): Server {
       case "get_robot_joints": {
         const response = await fetchFromRobotStudio<JointResponse>("/joints");
 
-        const joints = response.joints;
-        const formattedOutput = [
-          `Robot Joint Positions (degrees):`,
-          `  J1: ${joints.j1.toFixed(3)}°`,
-          `  J2: ${joints.j2.toFixed(3)}°`,
-          `  J3: ${joints.j3.toFixed(3)}°`,
-          `  J4: ${joints.j4.toFixed(3)}°`,
-          `  J5: ${joints.j5.toFixed(3)}°`,
-          `  J6: ${joints.j6.toFixed(3)}°`,
-          ``,
-          `Timestamp: ${response.timestamp}`,
-        ].join("\n");
+        const j = response.joints;
+        const formattedOutput = `J1=${j.j1.toFixed(2)} J2=${j.j2.toFixed(2)} J3=${j.j3.toFixed(2)} J4=${j.j4.toFixed(2)} J5=${j.j5.toFixed(2)} J6=${j.j6.toFixed(2)} (deg)`;
 
         return {
           content: [
@@ -657,24 +647,15 @@ function createServer(): Server {
       case "get_station_status": {
         const response = await fetchFromRobotStudio<StatusResponse>("/status");
 
-        const statusLines = [
-          `RobotStudio Status:`,
-          `  Station Open: ${response.hasActiveStation ? "Yes" : "No"}`,
-        ];
-
-        if (response.hasActiveStation) {
-          statusLines.push(
-            `  Station Name: ${response.stationName}`,
-            `  Virtual Controllers: ${response.virtualControllerCount}`,
-            `  Simulation Running: ${response.isSimulationRunning ? "Yes" : "No"}`
-          );
+        if (!response.hasActiveStation) {
+          return { content: [{ type: "text", text: "No station open." }] };
         }
 
         return {
           content: [
             {
               type: "text",
-              text: statusLines.join("\n"),
+              text: `Station: ${response.stationName} | Controllers: ${response.virtualControllerCount} | Simulation: ${response.isSimulationRunning ? "running" : "stopped"}`,
             },
           ],
         };
@@ -718,11 +699,7 @@ function createServer(): Server {
           content: [
             {
               type: "text",
-              text: [
-                `${uploadResponse.message}`,
-                `  Module: ${uploadResponse.moduleName}`,
-                `  Task: ${uploadResponse.taskName}`,
-              ].join("\n"),
+              text: `Uploaded ${uploadResponse.moduleName} to ${uploadResponse.taskName}.`,
             },
           ],
         };
@@ -800,37 +777,21 @@ function createServer(): Server {
         const statusResponse =
           await fetchFromRobotStudio<RapidStatusResponse>("/rapid/status");
 
-        const lines = [
-          `RAPID Execution Status: ${statusResponse.controllerExecutionStatus}`,
-          ``,
-        ];
+        const lines = [`Controller: ${statusResponse.controllerExecutionStatus}`];
 
         for (const task of statusResponse.tasks) {
-          lines.push(`Task: ${task.name}`);
-          lines.push(`  Status: ${task.executionStatus}`);
-          lines.push(`  Enabled: ${task.enabled}`);
-          lines.push(`  Type: ${task.type}`);
-
+          let taskLine = `${task.name}: ${task.executionStatus}`;
           if (task.programPointer) {
-            lines.push(
-              `  Program Pointer: ${task.programPointer.module}/${task.programPointer.routine} [${task.programPointer.range}]`
-            );
+            taskLine += ` PP=${task.programPointer.module}/${task.programPointer.routine}[${task.programPointer.range}]`;
           }
           if (task.motionPointer) {
-            lines.push(
-              `  Motion Pointer: ${task.motionPointer.module}/${task.motionPointer.routine} [${task.motionPointer.range}]`
-            );
+            taskLine += ` MP=${task.motionPointer.module}/${task.motionPointer.routine}[${task.motionPointer.range}]`;
           }
-          lines.push("");
+          lines.push(taskLine);
         }
 
         return {
-          content: [
-            {
-              type: "text",
-              text: lines.join("\n"),
-            },
-          ],
+          content: [{ type: "text", text: lines.join("\n") }],
         };
       }
 
@@ -856,13 +817,7 @@ function createServer(): Server {
           content: [
             {
               type: "text",
-              text: [
-                `Task: ${sourceResponse.taskName}`,
-                `Module: ${sourceResponse.moduleName}`,
-                `File: ${sourceResponse.filePath}`,
-                ``,
-                sourceResponse.code,
-              ].join("\n"),
+              text: `--- ${sourceResponse.moduleName} (${sourceResponse.taskName}) ---\n${sourceResponse.code}`,
             },
           ],
         };
@@ -874,24 +829,16 @@ function createServer(): Server {
             "/rapid/modules"
           );
 
-        const lines: string[] = ["RAPID Modules in Controller:", ""];
-
+        const lines: string[] = [];
         for (const task of modulesResponse.tasks) {
-          lines.push(`Task: ${task.taskName}`);
-          for (const mod of task.modules) {
-            const tag = mod.isSystem ? " [system]" : "";
-            lines.push(`  - ${mod.name}${tag}`);
-          }
-          lines.push("");
+          const mods = task.modules
+            .map((m) => m.name + (m.isSystem ? "*" : ""))
+            .join(", ");
+          lines.push(`${task.taskName}: ${mods}`);
         }
 
         return {
-          content: [
-            {
-              type: "text",
-              text: lines.join("\n"),
-            },
-          ],
+          content: [{ type: "text", text: lines.join("\n") + "\n(* = system)" }],
         };
       }
 
@@ -914,29 +861,18 @@ function createServer(): Server {
           };
         }
 
-        const errorLines = [
-          `Event Log (${errorLogResponse.messages.length} entries):`,
-          ``,
-        ];
-
+        const errorLines: string[] = [];
         for (const msg of errorLogResponse.messages) {
-          errorLines.push(
-            `[${msg.type}] #${msg.sequenceNumber} - ${msg.title}`
-          );
-          if (msg.body) {
-            errorLines.push(`  ${msg.body}`);
-          }
-          errorLines.push(
-            `  Category: ${msg.categoryName} | Time: ${msg.timestamp}`
-          );
-          errorLines.push("");
+          let line = `[${msg.type}] ${msg.title}`;
+          if (msg.body) line += ` - ${msg.body}`;
+          errorLines.push(line);
         }
 
         return {
           content: [
             {
               type: "text",
-              text: errorLines.join("\n"),
+              text: `${errorLogResponse.messages.length} entries:\n${errorLines.join("\n")}`,
             },
           ],
         };
@@ -971,7 +907,7 @@ function createServer(): Server {
             },
             {
               type: "text",
-              text: `Screenshot captured: ${screenshotResponse.width}x${screenshotResponse.height} | ${screenshotResponse.timestamp}`,
+              text: `${screenshotResponse.width}x${screenshotResponse.height}`,
             },
           ],
         };
@@ -1010,13 +946,7 @@ function createServer(): Server {
           content: [
             {
               type: "text",
-              text: [
-                `RAPID Variable: ${varResponse.variableName}`,
-                `  Value: ${varResponse.value}`,
-                `  Type: ${varResponse.dataType}`,
-                `  Module: ${varResponse.moduleName}`,
-                `  Task: ${varResponse.taskName}`,
-              ].join("\n"),
+              text: `${varResponse.moduleName}/${varResponse.variableName} (${varResponse.dataType}) = ${varResponse.value}`,
             },
           ],
         };
@@ -1039,23 +969,17 @@ function createServer(): Server {
             }
           );
 
-        const ioLines: string[] = [
-          `I/O Signals (${ioResponse.signalCount} found):`,
-          ``,
-        ];
+        if (ioResponse.signals.length === 0) {
+          return { content: [{ type: "text", text: "No signals found." }] };
+        }
 
+        const ioLines: string[] = [];
         for (const sig of ioResponse.signals) {
-          const state = sig.logicalState ? ` [${sig.logicalState}]` : "";
-          ioLines.push(`  ${sig.name} (${sig.type}): ${sig.value}${state}`);
+          ioLines.push(`${sig.name}(${sig.type})=${sig.value}`);
         }
 
         return {
-          content: [
-            {
-              type: "text",
-              text: ioLines.join("\n"),
-            },
-          ],
+          content: [{ type: "text", text: ioLines.join(", ") }],
         };
       }
 
@@ -1079,23 +1003,19 @@ function createServer(): Server {
             }
           );
 
-        const sceneLines: string[] = [
-          `Station: ${sceneResponse.stationName}`,
-          `Objects found: ${sceneResponse.objectCount}`,
-          ``,
-        ];
+        const sceneLines: string[] = [];
 
         function formatObject(obj: SceneObjectData, indent: string): void {
-          let line = `${indent}${obj.name} [${obj.typeName}]`;
+          let line = `${indent}${obj.name}[${obj.typeName}]`;
           if (obj.globalPosition) {
-            line += ` global=(${obj.globalPosition.x}, ${obj.globalPosition.y}, ${obj.globalPosition.z})`;
+            line += ` g(${obj.globalPosition.x},${obj.globalPosition.y},${obj.globalPosition.z})`;
           } else if (obj.position) {
-            line += ` pos=(${obj.position.x}, ${obj.position.y}, ${obj.position.z})`;
+            line += ` l(${obj.position.x},${obj.position.y},${obj.position.z})`;
           }
           if (obj.eulerAngles) {
-            line += ` rot=(${obj.eulerAngles.rx}, ${obj.eulerAngles.ry}, ${obj.eulerAngles.rz})`;
+            line += ` r(${obj.eulerAngles.rx},${obj.eulerAngles.ry},${obj.eulerAngles.rz})`;
           }
-          if (!obj.visible) line += " (hidden)";
+          if (!obj.visible) line += " hidden";
           sceneLines.push(line);
           if (obj.children) {
             for (const child of obj.children) {
@@ -1105,16 +1025,11 @@ function createServer(): Server {
         }
 
         for (const obj of sceneResponse.objects) {
-          formatObject(obj, "  ");
+          formatObject(obj, "");
         }
 
         return {
-          content: [
-            {
-              type: "text",
-              text: sceneLines.join("\n"),
-            },
-          ],
+          content: [{ type: "text", text: `${sceneResponse.objectCount} objects:\n${sceneLines.join("\n")}` }],
         };
       }
 
@@ -1160,15 +1075,7 @@ function createServer(): Server {
           content: [
             {
               type: "text",
-              text: [
-                `${setVarResponse.message}`,
-                `  Variable: ${setVarResponse.variableName}`,
-                `  Type: ${setVarResponse.dataType}`,
-                `  Previous: ${setVarResponse.previousValue}`,
-                `  New: ${setVarResponse.newValue}`,
-                `  Module: ${setVarResponse.moduleName}`,
-                `  Task: ${setVarResponse.taskName}`,
-              ].join("\n"),
+              text: `${setVarResponse.moduleName}/${setVarResponse.variableName}: ${setVarResponse.previousValue} -> ${setVarResponse.newValue}`,
             },
           ],
         };
@@ -1206,20 +1113,11 @@ function createServer(): Server {
             }
           );
 
-        const stateStr = setIoResponse.logicalState
-          ? ` [${setIoResponse.logicalState}]`
-          : "";
-
         return {
           content: [
             {
               type: "text",
-              text: [
-                `${setIoResponse.message}`,
-                `  Signal: ${setIoResponse.signalName} (${setIoResponse.signalType})`,
-                `  Previous: ${setIoResponse.previousValue}`,
-                `  New: ${setIoResponse.newValue}${stateStr}`,
-              ].join("\n"),
+              text: `${setIoResponse.signalName}: ${setIoResponse.previousValue} -> ${setIoResponse.newValue}`,
             },
           ],
         };
