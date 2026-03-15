@@ -144,6 +144,27 @@ interface IOSignalsResponse {
   signals: IOSignalData[];
 }
 
+interface SetRapidVariableResponse {
+  success: boolean;
+  message: string;
+  taskName: string;
+  moduleName: string;
+  variableName: string;
+  previousValue: string;
+  newValue: string;
+  dataType: string;
+}
+
+interface SetIOSignalResponse {
+  success: boolean;
+  message: string;
+  signalName: string;
+  signalType: string;
+  previousValue: string;
+  newValue: string;
+  logicalState?: string;
+}
+
 interface PositionData {
   x: number;
   y: number;
@@ -517,6 +538,58 @@ function createServer(): Server {
             },
           },
           required: [],
+        },
+      },
+      {
+        name: "set_rapid_variable",
+        description:
+          "Write a value to a RAPID variable (VAR or PERS) in the virtual controller. Supports all RAPID data types including num, bool, string, robtarget, tooldata, wobjdata, etc. The value must be provided as a RAPID-formatted string (e.g. '10', 'TRUE', '\"hello\"', '[[500,0,400],[1,0,0,0],[0,0,0,0],[9E9,9E9,9E9,9E9,9E9,9E9]]' for robtarget). Cannot write while RAPID execution is running.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            variableName: {
+              type: "string",
+              description:
+                "Name of the RAPID variable to write (e.g. 'my_num', 'target_pos', 'offset').",
+            },
+            value: {
+              type: "string",
+              description:
+                "The value to set, as a RAPID-formatted string. Examples: '42' for num, 'TRUE' for bool, '\"hello\"' for string, '[[500,0,400],[1,0,0,0],[0,0,0,0],[9E9,9E9,9E9,9E9,9E9,9E9]]' for robtarget.",
+            },
+            taskName: {
+              type: "string",
+              description:
+                "RAPID task name. Defaults to 'T_ROB1'.",
+            },
+            moduleName: {
+              type: "string",
+              description:
+                "Module containing the variable. Defaults to first non-system module.",
+            },
+          },
+          required: ["variableName", "value"],
+        },
+      },
+      {
+        name: "set_io_signal",
+        description:
+          "Set the value of an I/O signal in the virtual controller. For digital signals, use 1 (HIGH) or 0 (LOW). For analog signals, use the desired numeric value. Useful for simulating sensor inputs, triggering actuators, and testing Smart Component logic.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            signalName: {
+              type: "string",
+              description:
+                "Name of the I/O signal to set (e.g. 'DI_Sensor_Inf', 'DO_Ventosa', 'AI_Pressure').",
+            },
+            value: {
+              type: "number",
+              description:
+                "The value to set. For digital signals: 0 (LOW) or 1 (HIGH). For analog signals: any numeric value within the signal's range.",
+            },
+          },
+          required: ["signalName", "value"],
         },
       },
     ],
@@ -1015,6 +1088,113 @@ function createServer(): Server {
             {
               type: "text",
               text: sceneLines.join("\n"),
+            },
+          ],
+        };
+      }
+
+      case "set_rapid_variable": {
+        const setVarArgs = args as {
+          variableName?: string;
+          value?: string;
+          taskName?: string;
+          moduleName?: string;
+        };
+
+        if (!setVarArgs?.variableName) {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            "Missing required parameter 'variableName'."
+          );
+        }
+
+        if (setVarArgs.value === undefined || setVarArgs.value === null) {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            "Missing required parameter 'value'."
+          );
+        }
+
+        const setVarBody: Record<string, string> = {
+          variableName: setVarArgs.variableName,
+          value: setVarArgs.value,
+        };
+        if (setVarArgs.taskName) setVarBody.taskName = setVarArgs.taskName;
+        if (setVarArgs.moduleName) setVarBody.moduleName = setVarArgs.moduleName;
+
+        const setVarResponse =
+          await fetchFromRobotStudio<SetRapidVariableResponse>(
+            "/rapid/variable/set",
+            {
+              method: "POST",
+              body: JSON.stringify(setVarBody),
+            }
+          );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: [
+                `${setVarResponse.message}`,
+                `  Variable: ${setVarResponse.variableName}`,
+                `  Type: ${setVarResponse.dataType}`,
+                `  Previous: ${setVarResponse.previousValue}`,
+                `  New: ${setVarResponse.newValue}`,
+                `  Module: ${setVarResponse.moduleName}`,
+                `  Task: ${setVarResponse.taskName}`,
+              ].join("\n"),
+            },
+          ],
+        };
+      }
+
+      case "set_io_signal": {
+        const setIoArgs = args as {
+          signalName?: string;
+          value?: number;
+        };
+
+        if (!setIoArgs?.signalName) {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            "Missing required parameter 'signalName'."
+          );
+        }
+
+        if (setIoArgs.value === undefined || setIoArgs.value === null) {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            "Missing required parameter 'value'."
+          );
+        }
+
+        const setIoResponse =
+          await fetchFromRobotStudio<SetIOSignalResponse>(
+            "/io/signals/set",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                signalName: setIoArgs.signalName,
+                value: setIoArgs.value,
+              }),
+            }
+          );
+
+        const stateStr = setIoResponse.logicalState
+          ? ` [${setIoResponse.logicalState}]`
+          : "";
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: [
+                `${setIoResponse.message}`,
+                `  Signal: ${setIoResponse.signalName} (${setIoResponse.signalType})`,
+                `  Previous: ${setIoResponse.previousValue}`,
+                `  New: ${setIoResponse.newValue}${stateStr}`,
+              ].join("\n"),
             },
           ],
         };
