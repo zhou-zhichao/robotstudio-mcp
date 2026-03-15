@@ -765,11 +765,32 @@ function createServer(): Server {
             }
           );
 
+        // After stop, poll until execution actually stops (max 5s)
+        let finalStatus = execResponse.executionStatus;
+        if (execArgs.action === "stop") {
+          const pollStart = Date.now();
+          while (
+            finalStatus.toLowerCase() !== "stopped" &&
+            Date.now() - pollStart < 5000
+          ) {
+            await new Promise((r) => setTimeout(r, 500));
+            try {
+              const statusCheck =
+                await fetchFromRobotStudio<RapidStatusResponse>(
+                  "/rapid/status"
+                );
+              finalStatus = statusCheck.controllerExecutionStatus;
+            } catch {
+              break;
+            }
+          }
+        }
+
         return {
           content: [
             {
               type: "text",
-              text: `${execResponse.message}\nExecution status: ${execResponse.executionStatus}`,
+              text: `${execResponse.message}\nExecution status: ${finalStatus}`,
             },
           ],
         };
@@ -876,7 +897,11 @@ function createServer(): Server {
 
       case "get_execution_errors": {
         const errorLogResponse =
-          await fetchFromRobotStudio<EventLogResponse>("/rapid/errors");
+          await fetchFromRobotStudio<EventLogResponse>(
+            "/rapid/errors",
+            {},
+            20000 // 20s timeout — controller may be slow after stop
+          );
 
         if (errorLogResponse.messages.length === 0) {
           return {
