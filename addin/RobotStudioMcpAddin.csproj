@@ -70,6 +70,10 @@
       <HintPath>$(RobotStudioBin)\ABB.Robotics.Controllers.PC.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="ABB.Robotics.Math">
+      <HintPath>$(RobotStudioBin)\ABB.Robotics.Math.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>

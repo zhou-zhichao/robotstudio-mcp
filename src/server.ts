@@ -144,6 +144,36 @@ interface IOSignalsResponse {
   signals: IOSignalData[];
 }
 
+interface PositionData {
+  x: number;
+  y: number;
+  z: number;
+}
+
+interface EulerAnglesData {
+  rx: number;
+  ry: number;
+  rz: number;
+}
+
+interface SceneObjectData {
+  name: string;
+  typeName: string;
+  depth: number;
+  visible: boolean;
+  position?: PositionData;
+  globalPosition?: PositionData;
+  eulerAngles?: EulerAnglesData;
+  children?: SceneObjectData[];
+}
+
+interface SceneObjectsResponse {
+  success: boolean;
+  stationName: string;
+  objectCount: number;
+  objects: SceneObjectData[];
+}
+
 interface ScreenshotResponse {
   success: boolean;
   message: string;
@@ -463,6 +493,27 @@ function createServer(): Server {
               type: "string",
               description:
                 "Optional: name of a specific signal to read (e.g. 'DI_Sensor_Inf', 'DO_Ventosa'). If omitted, returns all signals.",
+            },
+          },
+          required: [],
+        },
+      },
+      {
+        name: "get_scene_objects",
+        description:
+          "Read the positions and orientations of all objects (parts, mechanisms, tools, work objects) in the RobotStudio station scene graph. Returns a hierarchical tree with each object's name, type, position (x,y,z in mm), orientation (quaternion q1-q4), and visibility. Use nameFilter to search for specific objects by name. Useful for understanding the scene layout, tracking object positions during simulation, and verifying pick/place locations.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            nameFilter: {
+              type: "string",
+              description:
+                "Optional: filter objects by name (case-insensitive substring match). E.g. 'box', 'conveyor', 'tool'.",
+            },
+            includeChildren: {
+              type: "boolean",
+              description:
+                "Optional: whether to include child objects in the hierarchy (default: true). Set to false for a flat top-level list.",
             },
           },
           required: [],
@@ -905,6 +956,65 @@ function createServer(): Server {
             {
               type: "text",
               text: ioLines.join("\n"),
+            },
+          ],
+        };
+      }
+
+      case "get_scene_objects": {
+        const sceneArgs = args as {
+          nameFilter?: string;
+          includeChildren?: boolean;
+        };
+
+        const sceneBody: Record<string, unknown> = {};
+        if (sceneArgs?.nameFilter) sceneBody.nameFilter = sceneArgs.nameFilter;
+        if (sceneArgs?.includeChildren !== undefined)
+          sceneBody.includeChildren = sceneArgs.includeChildren;
+
+        const sceneResponse =
+          await fetchFromRobotStudio<SceneObjectsResponse>(
+            "/scene/objects",
+            {
+              method: "POST",
+              body: JSON.stringify(sceneBody),
+            }
+          );
+
+        const sceneLines: string[] = [
+          `Station: ${sceneResponse.stationName}`,
+          `Objects found: ${sceneResponse.objectCount}`,
+          ``,
+        ];
+
+        function formatObject(obj: SceneObjectData, indent: string): void {
+          let line = `${indent}${obj.name} [${obj.typeName}]`;
+          if (obj.globalPosition) {
+            line += ` global=(${obj.globalPosition.x}, ${obj.globalPosition.y}, ${obj.globalPosition.z})`;
+          } else if (obj.position) {
+            line += ` pos=(${obj.position.x}, ${obj.position.y}, ${obj.position.z})`;
+          }
+          if (obj.eulerAngles) {
+            line += ` rot=(${obj.eulerAngles.rx}, ${obj.eulerAngles.ry}, ${obj.eulerAngles.rz})`;
+          }
+          if (!obj.visible) line += " (hidden)";
+          sceneLines.push(line);
+          if (obj.children) {
+            for (const child of obj.children) {
+              formatObject(child, indent + "  ");
+            }
+          }
+        }
+
+        for (const obj of sceneResponse.objects) {
+          formatObject(obj, "  ");
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: sceneLines.join("\n"),
             },
           ],
         };

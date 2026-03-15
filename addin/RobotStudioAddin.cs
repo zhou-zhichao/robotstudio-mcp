@@ -239,13 +239,17 @@ namespace RobotStudioMcpAddin
                             if (method != "GET" && method != "POST") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
                             responseJson = HandleGetIOSignals(body, out statusCode);
                             break;
+                        case "/scene/objects":
+                            if (method != "GET" && method != "POST") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
+                            responseJson = HandleGetSceneObjects(body, out statusCode);
+                            break;
                         default:
                             statusCode = 404;
                             responseJson = JsonConvert.SerializeObject(new ErrorResponse
                             {
                                 Success = false,
                                 Error = "Not Found",
-                                Message = "Endpoint '" + path + "' not found. Available: /health, /joints, /status, /simulation, /rapid/upload, /rapid/execute, /rapid/status, /rapid/source, /rapid/modules, /rapid/errors, /rapid/variable, /io/signals, /screenshot"
+                                Message = "Endpoint '" + path + "' not found. Available: /health, /joints, /status, /simulation, /rapid/upload, /rapid/execute, /rapid/status, /rapid/source, /rapid/modules, /rapid/errors, /rapid/variable, /io/signals, /scene/objects, /screenshot"
                             });
                             break;
                     }
@@ -1255,6 +1259,186 @@ namespace RobotStudioMcpAddin
 
         #endregion
 
+        #region Scene Objects Handler
+
+        private static string HandleGetSceneObjects(string body, out int statusCode)
+        {
+            try
+            {
+                var station = Project.ActiveProject as Station;
+                if (station == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Active Station", Message = "No station is currently open in RobotStudio." });
+                }
+
+                // Parse optional filter from body
+                string nameFilter = null;
+                bool includeChildren = true;
+                if (!string.IsNullOrWhiteSpace(body))
+                {
+                    try
+                    {
+                        var req = JsonConvert.DeserializeObject<SceneObjectsRequest>(body);
+                        if (req != null)
+                        {
+                            nameFilter = req.NameFilter;
+                            if (req.IncludeChildren.HasValue) includeChildren = req.IncludeChildren.Value;
+                        }
+                    }
+                    catch { /* use defaults */ }
+                }
+
+                var objects = new List<SceneObjectData>();
+
+                // Access GraphicComponents on the UI thread since it's a station object
+                Exception accessError = null;
+                var waitHandle = new ManualResetEvent(false);
+
+                var gc = GraphicControl.ActiveGraphicControl;
+                if (gc != null)
+                {
+                    gc.BeginInvoke(new Action(() =>
+                    {
+                        try
+                        {
+                            CollectSceneObjects(station.GraphicComponents, objects, nameFilter, includeChildren, 0);
+                        }
+                        catch (Exception ex)
+                        {
+                            accessError = ex;
+                        }
+                        finally
+                        {
+                            waitHandle.Set();
+                        }
+                    }));
+
+                    if (!waitHandle.WaitOne(10000))
+                    {
+                        statusCode = 500;
+                        return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Timeout", Message = "Timed out reading scene objects from UI thread." });
+                    }
+                }
+                else
+                {
+                    // Try direct access if no graphic control
+                    try
+                    {
+                        CollectSceneObjects(station.GraphicComponents, objects, nameFilter, includeChildren, 0);
+                    }
+                    catch (Exception ex)
+                    {
+                        accessError = ex;
+                    }
+                }
+
+                if (accessError != null)
+                {
+                    statusCode = 500;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Access Error", Message = "Failed to read scene objects: " + accessError.Message });
+                }
+
+                statusCode = 200;
+                return JsonConvert.SerializeObject(new SceneObjectsResponse
+                {
+                    Success = true,
+                    StationName = station.Name,
+                    ObjectCount = objects.Count,
+                    Objects = objects
+                });
+            }
+            catch (Exception ex)
+            {
+                statusCode = 500;
+                return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Internal Error", Message = "Scene objects error: " + ex.Message });
+            }
+        }
+
+        private static void CollectSceneObjects(GraphicComponentCollection components, List<SceneObjectData> result, string nameFilter, bool includeChildren, int depth)
+        {
+            if (components == null) return;
+            for (int i = 0; i < components.Count; i++)
+            {
+                var comp = components[i];
+                if (comp == null) continue;
+                ProcessGraphicComponent(comp, result, nameFilter, includeChildren, depth);
+            }
+        }
+
+        private static void ProcessGraphicComponent(GraphicComponent comp, List<SceneObjectData> result, string nameFilter, bool includeChildren, int depth)
+        {
+            var obj = new SceneObjectData();
+            obj.Name = comp.Name ?? "(unnamed)";
+            obj.TypeName = comp.GetType().Name;
+            obj.Depth = depth;
+
+            // Get transform (position & rotation)
+            try
+            {
+                var transform = comp.Transform;
+                if (transform != null)
+                {
+                    obj.Position = new PositionData { X = Math.Round(transform.X, 3), Y = Math.Round(transform.Y, 3), Z = Math.Round(transform.Z, 3) };
+                    obj.EulerAngles = new EulerAnglesData { RX = Math.Round(transform.RX, 3), RY = Math.Round(transform.RY, 3), RZ = Math.Round(transform.RZ, 3) };
+
+                    // Also get global position
+                    try
+                    {
+                        var gm = transform.GlobalMatrix;
+                        var gt = gm.Translation;
+                        obj.GlobalPosition = new PositionData { X = Math.Round(gt.x, 3), Y = Math.Round(gt.y, 3), Z = Math.Round(gt.z, 3) };
+                    }
+                    catch { /* GlobalMatrix may not be available */ }
+                }
+            }
+            catch
+            {
+                // Some components may not have a valid transform
+            }
+
+            // Check if it's visible
+            try
+            {
+                obj.Visible = comp.Visible;
+            }
+            catch { obj.Visible = true; }
+
+            // If name filter is active and this item doesn't match, only include if a child matches
+            bool nameMatches = string.IsNullOrEmpty(nameFilter) || (comp.Name != null && comp.Name.IndexOf(nameFilter, StringComparison.OrdinalIgnoreCase) >= 0);
+
+            // Collect children
+            var children = new List<SceneObjectData>();
+            if (includeChildren && depth < 5)
+            {
+                try
+                {
+                    foreach (var child in comp.Children)
+                    {
+                        var childGc = child as GraphicComponent;
+                        if (childGc != null)
+                        {
+                            ProcessGraphicComponent(childGc, children, nameFilter, includeChildren, depth + 1);
+                        }
+                    }
+                }
+                catch { /* no children or Children not supported */ }
+            }
+
+            if (children.Count > 0)
+            {
+                obj.Children = children;
+            }
+
+            // Add this object if it matches or has matching children
+            if (nameMatches || children.Count > 0)
+            {
+                result.Add(obj);
+            }
+        }
+
+        #endregion
+
         #region RAPID Variable & IO Handlers
 
         private static string HandleReadVariable(string body, out int statusCode)
@@ -1628,6 +1812,48 @@ namespace RobotStudioMcpAddin
         [JsonProperty("type")] public string Type { get; set; }
         [JsonProperty("value")] public string Value { get; set; }
         [JsonProperty("logicalState")] public string LogicalState { get; set; }
+    }
+
+    // Scene Objects
+    public class SceneObjectsRequest
+    {
+        [JsonProperty("nameFilter")] public string NameFilter { get; set; }
+        [JsonProperty("includeChildren")] public bool? IncludeChildren { get; set; }
+    }
+
+    public class SceneObjectsResponse
+    {
+        [JsonProperty("success")] public bool Success { get; set; }
+        [JsonProperty("stationName")] public string StationName { get; set; }
+        [JsonProperty("objectCount")] public int ObjectCount { get; set; }
+        [JsonProperty("objects")] public List<SceneObjectData> Objects { get; set; }
+    }
+
+    public class SceneObjectData
+    {
+        [JsonProperty("name")] public string Name { get; set; }
+        [JsonProperty("typeName")] public string TypeName { get; set; }
+        [JsonProperty("depth")] public int Depth { get; set; }
+        [JsonProperty("visible")] public bool Visible { get; set; }
+        [JsonProperty("position", NullValueHandling = NullValueHandling.Ignore)] public PositionData Position { get; set; }
+        [JsonProperty("globalPosition", NullValueHandling = NullValueHandling.Ignore)] public PositionData GlobalPosition { get; set; }
+        [JsonProperty("eulerAngles", NullValueHandling = NullValueHandling.Ignore)] public EulerAnglesData EulerAngles { get; set; }
+        [JsonProperty("children", NullValueHandling = NullValueHandling.Ignore)]
+        public List<SceneObjectData> Children { get; set; }
+    }
+
+    public class PositionData
+    {
+        [JsonProperty("x")] public double X { get; set; }
+        [JsonProperty("y")] public double Y { get; set; }
+        [JsonProperty("z")] public double Z { get; set; }
+    }
+
+    public class EulerAnglesData
+    {
+        [JsonProperty("rx")] public double RX { get; set; }
+        [JsonProperty("ry")] public double RY { get; set; }
+        [JsonProperty("rz")] public double RZ { get; set; }
     }
 
     // Screenshot
