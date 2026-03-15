@@ -122,6 +122,28 @@ interface EventLogResponse {
   messages: EventLogMessageData[];
 }
 
+interface RapidVariableResponse {
+  success: boolean;
+  taskName: string;
+  moduleName: string;
+  variableName: string;
+  value: string;
+  dataType: string;
+}
+
+interface IOSignalData {
+  name: string;
+  type: string;
+  value: string;
+  logicalState?: string;
+}
+
+interface IOSignalsResponse {
+  success: boolean;
+  signalCount: number;
+  signals: IOSignalData[];
+}
+
 interface ScreenshotResponse {
   success: boolean;
   message: string;
@@ -399,6 +421,48 @@ function createServer(): Server {
               type: "number",
               description:
                 "Image height in pixels (default 720, max 2160).",
+            },
+          },
+          required: [],
+        },
+      },
+      {
+        name: "read_rapid_variable",
+        description:
+          "Read the current value of a RAPID variable from the virtual controller. Can read any VAR, PERS, or CONST variable including num, bool, string, robtarget, tooldata, wobjdata, etc. Useful for monitoring program state during or after execution.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            variableName: {
+              type: "string",
+              description:
+                "Name of the RAPID variable to read (e.g. 'off_pq', 'green_count', 'TCP_VentosaTool').",
+            },
+            taskName: {
+              type: "string",
+              description:
+                "RAPID task name. Defaults to 'T_ROB1'.",
+            },
+            moduleName: {
+              type: "string",
+              description:
+                "Module containing the variable. Defaults to first non-system module.",
+            },
+          },
+          required: ["variableName"],
+        },
+      },
+      {
+        name: "get_io_signals",
+        description:
+          "Read I/O signal values from the virtual controller. Returns digital and analog input/output signals with their current values. When signalName is provided, returns only that signal; otherwise returns all signals. Useful for checking sensor states, actuator outputs, and Smart Component signals.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            signalName: {
+              type: "string",
+              description:
+                "Optional: name of a specific signal to read (e.g. 'DI_Sensor_Inf', 'DO_Ventosa'). If omitted, returns all signals.",
             },
           },
           required: [],
@@ -759,6 +823,88 @@ function createServer(): Server {
             {
               type: "text",
               text: `Screenshot captured: ${screenshotResponse.width}x${screenshotResponse.height} | ${screenshotResponse.timestamp}`,
+            },
+          ],
+        };
+      }
+
+      case "read_rapid_variable": {
+        const varArgs = args as {
+          variableName?: string;
+          taskName?: string;
+          moduleName?: string;
+        };
+
+        if (!varArgs?.variableName) {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            "Missing required parameter 'variableName'."
+          );
+        }
+
+        const varBody: Record<string, string> = {
+          variableName: varArgs.variableName,
+        };
+        if (varArgs.taskName) varBody.taskName = varArgs.taskName;
+        if (varArgs.moduleName) varBody.moduleName = varArgs.moduleName;
+
+        const varResponse =
+          await fetchFromRobotStudio<RapidVariableResponse>(
+            "/rapid/variable",
+            {
+              method: "POST",
+              body: JSON.stringify(varBody),
+            }
+          );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: [
+                `RAPID Variable: ${varResponse.variableName}`,
+                `  Value: ${varResponse.value}`,
+                `  Type: ${varResponse.dataType}`,
+                `  Module: ${varResponse.moduleName}`,
+                `  Task: ${varResponse.taskName}`,
+              ].join("\n"),
+            },
+          ],
+        };
+      }
+
+      case "get_io_signals": {
+        const ioArgs = args as {
+          signalName?: string;
+        };
+
+        const ioBody: Record<string, string> = {};
+        if (ioArgs?.signalName) ioBody.signalName = ioArgs.signalName;
+
+        const ioResponse =
+          await fetchFromRobotStudio<IOSignalsResponse>(
+            "/io/signals",
+            {
+              method: "POST",
+              body: JSON.stringify(ioBody),
+            }
+          );
+
+        const ioLines: string[] = [
+          `I/O Signals (${ioResponse.signalCount} found):`,
+          ``,
+        ];
+
+        for (const sig of ioResponse.signals) {
+          const state = sig.logicalState ? ` [${sig.logicalState}]` : "";
+          ioLines.push(`  ${sig.name} (${sig.type}): ${sig.value}${state}`);
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: ioLines.join("\n"),
             },
           ],
         };

@@ -15,6 +15,7 @@ using ABB.Robotics.Controllers;
 using ABB.Robotics.Controllers.MotionDomain;
 using ABB.Robotics.Controllers.RapidDomain;
 using ABB.Robotics.Controllers.EventLogDomain;
+using ABB.Robotics.Controllers.IOSystemDomain;
 using Newtonsoft.Json;
 
 namespace RobotStudioMcpAddin
@@ -230,13 +231,21 @@ namespace RobotStudioMcpAddin
                             if (method != "GET" && method != "POST") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
                             responseJson = HandleScreenshot(body, out statusCode);
                             break;
+                        case "/rapid/variable":
+                            if (method != "POST") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
+                            responseJson = HandleReadVariable(body, out statusCode);
+                            break;
+                        case "/io/signals":
+                            if (method != "GET" && method != "POST") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
+                            responseJson = HandleGetIOSignals(body, out statusCode);
+                            break;
                         default:
                             statusCode = 404;
                             responseJson = JsonConvert.SerializeObject(new ErrorResponse
                             {
                                 Success = false,
                                 Error = "Not Found",
-                                Message = "Endpoint '" + path + "' not found. Available: /health, /joints, /status, /simulation, /rapid/upload, /rapid/execute, /rapid/status, /rapid/source, /rapid/modules, /rapid/errors, /screenshot"
+                                Message = "Endpoint '" + path + "' not found. Available: /health, /joints, /status, /simulation, /rapid/upload, /rapid/execute, /rapid/status, /rapid/source, /rapid/modules, /rapid/errors, /rapid/variable, /io/signals, /screenshot"
                             });
                             break;
                     }
@@ -1245,6 +1254,185 @@ namespace RobotStudioMcpAddin
         }
 
         #endregion
+
+        #region RAPID Variable & IO Handlers
+
+        private static string HandleReadVariable(string body, out int statusCode)
+        {
+            try
+            {
+                var request = JsonConvert.DeserializeObject<RapidVariableRequest>(body);
+                if (request == null || string.IsNullOrEmpty(request.VariableName))
+                {
+                    statusCode = 400;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Invalid Request", Message = "Request body must contain 'variableName'. Optional: 'taskName', 'moduleName'." });
+                }
+
+                string taskName = string.IsNullOrEmpty(request.TaskName) ? "T_ROB1" : request.TaskName;
+
+                var station = Project.ActiveProject as Station;
+                if (station == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Active Station", Message = "No station is currently open in RobotStudio." });
+                }
+
+                Controller controller = TryGetController(station);
+                if (controller == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Controller", Message = "No virtual controller found in the station." });
+                }
+
+                using (controller)
+                {
+                    controller.Logon(UserInfo.DefaultUser);
+
+                    ABB.Robotics.Controllers.RapidDomain.Task rapidTask = controller.Rapid.GetTask(taskName);
+                    if (rapidTask == null)
+                    {
+                        statusCode = 404;
+                        return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Task Not Found", Message = "RAPID task '" + taskName + "' not found." });
+                    }
+
+                    // If moduleName not provided, find the first non-system module
+                    string moduleName = request.ModuleName;
+                    if (string.IsNullOrEmpty(moduleName))
+                    {
+                        ABB.Robotics.Controllers.RapidDomain.Module[] modules = rapidTask.GetModules();
+                        for (int i = 0; i < modules.Length; i++)
+                        {
+                            string candidate = modules[i].Name;
+                            if (string.Equals(candidate, "BASE", StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(candidate, "user", StringComparison.OrdinalIgnoreCase))
+                                continue;
+                            moduleName = candidate;
+                            break;
+                        }
+                    }
+
+                    if (string.IsNullOrEmpty(moduleName))
+                    {
+                        statusCode = 404;
+                        return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Module Not Found", Message = "No non-system RAPID module found in task '" + taskName + "'." });
+                    }
+
+                    RapidData rapidData = rapidTask.GetRapidData(moduleName, request.VariableName);
+                    if (rapidData == null)
+                    {
+                        statusCode = 404;
+                        return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Variable Not Found", Message = "RAPID variable '" + request.VariableName + "' not found in module '" + moduleName + "'." });
+                    }
+
+                    string valueStr = rapidData.Value.ToString();
+                    string dataType = rapidData.RapidType;
+
+                    statusCode = 200;
+                    return JsonConvert.SerializeObject(new RapidVariableResponse
+                    {
+                        Success = true,
+                        TaskName = taskName,
+                        ModuleName = moduleName,
+                        VariableName = request.VariableName,
+                        Value = valueStr,
+                        DataType = dataType
+                    }, Formatting.Indented);
+                }
+            }
+            catch (Exception ex)
+            {
+                statusCode = 500;
+                return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Variable Read Error", Message = ex.Message });
+            }
+        }
+
+        private static string HandleGetIOSignals(string body, out int statusCode)
+        {
+            try
+            {
+                var station = Project.ActiveProject as Station;
+                if (station == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Active Station", Message = "No station is currently open in RobotStudio." });
+                }
+
+                Controller controller = TryGetController(station);
+                if (controller == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Controller", Message = "No virtual controller found in the station." });
+                }
+
+                using (controller)
+                {
+                    controller.Logon(UserInfo.DefaultUser);
+
+                    // Parse optional filter from body
+                    string filterName = null;
+                    if (!string.IsNullOrWhiteSpace(body))
+                    {
+                        try
+                        {
+                            var req = JsonConvert.DeserializeObject<IOSignalRequest>(body);
+                            if (req != null) filterName = req.SignalName;
+                        }
+                        catch { }
+                    }
+
+                    var signalList = new List<IOSignalData>();
+                    SignalCollection signals = controller.IOSystem.GetSignals(IOFilterTypes.All);
+
+                    foreach (Signal signal in signals)
+                    {
+                        try
+                        {
+                            // If filter provided, only return matching signal
+                            if (!string.IsNullOrEmpty(filterName))
+                            {
+                                if (!string.Equals(signal.Name, filterName, StringComparison.OrdinalIgnoreCase))
+                                    continue;
+                            }
+
+                            var sigData = new IOSignalData
+                            {
+                                Name = signal.Name,
+                                Type = signal.Type.ToString(),
+                                Value = signal.Value.ToString()
+                            };
+
+                            // Try to get logical state for digital signals
+                            try
+                            {
+                                if (signal.Type == SignalType.DigitalInput || signal.Type == SignalType.DigitalOutput)
+                                {
+                                    sigData.LogicalState = ((int)signal.Value == 1) ? "HIGH" : "LOW";
+                                }
+                            }
+                            catch { }
+
+                            signalList.Add(sigData);
+                        }
+                        catch { }
+                    }
+
+                    statusCode = 200;
+                    return JsonConvert.SerializeObject(new IOSignalsResponse
+                    {
+                        Success = true,
+                        SignalCount = signalList.Count,
+                        Signals = signalList
+                    }, Formatting.Indented);
+                }
+            }
+            catch (Exception ex)
+            {
+                statusCode = 500;
+                return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "IO Signal Error", Message = ex.Message });
+            }
+        }
+
+        #endregion
     }
 
     #region Data Transfer Objects
@@ -1401,6 +1589,45 @@ namespace RobotStudioMcpAddin
         [JsonProperty("body")] public string Body { get; set; }
         [JsonProperty("categoryName")] public string CategoryName { get; set; }
         [JsonProperty("type")] public string Type { get; set; }
+    }
+
+    // RAPID Variable
+    public class RapidVariableRequest
+    {
+        [JsonProperty("taskName")] public string TaskName { get; set; }
+        [JsonProperty("moduleName")] public string ModuleName { get; set; }
+        [JsonProperty("variableName")] public string VariableName { get; set; }
+    }
+
+    public class RapidVariableResponse
+    {
+        [JsonProperty("success")] public bool Success { get; set; }
+        [JsonProperty("taskName")] public string TaskName { get; set; }
+        [JsonProperty("moduleName")] public string ModuleName { get; set; }
+        [JsonProperty("variableName")] public string VariableName { get; set; }
+        [JsonProperty("value")] public string Value { get; set; }
+        [JsonProperty("dataType")] public string DataType { get; set; }
+    }
+
+    // IO Signals
+    public class IOSignalRequest
+    {
+        [JsonProperty("signalName")] public string SignalName { get; set; }
+    }
+
+    public class IOSignalsResponse
+    {
+        [JsonProperty("success")] public bool Success { get; set; }
+        [JsonProperty("signalCount")] public int SignalCount { get; set; }
+        [JsonProperty("signals")] public List<IOSignalData> Signals { get; set; }
+    }
+
+    public class IOSignalData
+    {
+        [JsonProperty("name")] public string Name { get; set; }
+        [JsonProperty("type")] public string Type { get; set; }
+        [JsonProperty("value")] public string Value { get; set; }
+        [JsonProperty("logicalState")] public string LogicalState { get; set; }
     }
 
     // Screenshot

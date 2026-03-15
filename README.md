@@ -85,7 +85,57 @@ npm run build
 
 ### 4. Configure Your AI Assistant
 
-Add to Claude Desktop config (`%AppData%\Claude\claude_desktop_config.json`):
+#### Claude Code (CLI)
+
+**Option A — CLI command (recommended):**
+
+```bash
+# Add globally (available in all projects)
+claude mcp add --scope user robotstudio -- node C:/path/to/robotstudio-mcp/src/dist/server.js
+
+# Or add for current project only (default)
+claude mcp add robotstudio -- node C:/path/to/robotstudio-mcp/src/dist/server.js
+```
+
+This writes the config to `~/.claude.json`. Use `--scope user` to make it available everywhere.
+
+**Option B — Project-level `.mcp.json`:**
+
+Create a `.mcp.json` file in the project root:
+
+```json
+{
+  "mcpServers": {
+    "robotstudio": {
+      "command": "node",
+      "args": ["C:/path/to/robotstudio-mcp/src/dist/server.js"]
+    }
+  }
+}
+```
+
+This makes the MCP server available whenever Claude Code is opened in this directory.
+
+**Option C — Global `settings.json`:**
+
+Add to `~/.claude/settings.json` (Windows: `%USERPROFILE%\.claude\settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "robotstudio": {
+      "command": "node",
+      "args": ["C:/path/to/robotstudio-mcp/src/dist/server.js"]
+    }
+  }
+}
+```
+
+After any option, **fully restart Claude Code** (exit + relaunch, not just a new conversation). Verify with `/mcp` — you should see `robotstudio` listed with all tools available.
+
+#### Claude Desktop
+
+Add to `%AppData%\Claude\claude_desktop_config.json`:
 
 ```json
 {
@@ -108,7 +158,10 @@ Add to Claude Desktop config (`%AppData%\Claude\claude_desktop_config.json`):
 | `upload_rapid_module` | Upload RAPID code to the virtual controller |
 | `control_rapid_execution` | Start/stop/reset RAPID program execution |
 | `get_rapid_execution_status` | Get execution status and program pointer |
+| `get_rapid_module_source` | Read RAPID module source code from controller |
+| `list_rapid_modules` | List all loaded modules grouped by task |
 | `get_execution_errors` | Read event log for errors and warnings |
+| `get_screenshot` | Capture 3D view screenshot (base64 PNG) |
 
 ## HTTP API Endpoints
 
