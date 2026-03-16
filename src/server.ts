@@ -310,15 +310,15 @@ function createServer(): Server {
       {
         name: "control_simulation",
         description:
-          "Start or stop the RobotStudio simulation. Use action 'start' to begin simulation or 'stop' to end it.",
+          "Start, stop, or reset the RobotStudio simulation. Use 'reset' to stop simulation AND clear all dynamically created objects (boxes, parts) from the scene.",
         inputSchema: {
           type: "object" as const,
           properties: {
             action: {
               type: "string",
-              enum: ["start", "stop"],
+              enum: ["start", "stop", "reset"],
               description:
-                "The simulation control action: 'start' to begin simulation, 'stop' to end simulation.",
+                "The simulation control action: 'start' to begin simulation, 'stop' to end simulation, 'reset' to stop and clear all dynamic objects.",
             },
           },
           required: ["action"],
@@ -619,7 +619,7 @@ function createServer(): Server {
       case "control_simulation": {
         const action = (args as { action?: string })?.action;
 
-        if (!action || !["start", "stop"].includes(action)) {
+        if (!action || !["start", "stop", "reset"].includes(action)) {
           throw new McpError(
             ErrorCode.InvalidParams,
             "Invalid action. Use 'start' or 'stop'."

@@ -409,6 +409,273 @@ The original `create_box` order (orange first) was restored — the issue was ne
 
 ---
 
+### Session 8: Random Box Generation — All on Left Pallet
+
+**Goal:** Randomly generate 4 boxes (orange or green) and place them all on the left pallet (`WO_Place_pq`).
+
+**Phase 1: Initial implementation**
+
+Rewrote Module1 to:
+- Use a Linear Congruential Generator (LCG) seeded from current time (`hour*3600 + min*60 + sec`)
+- Pre-determine all 4 box types before generating them on the conveyor
+- Place ALL boxes on the left pallet regardless of color
+- Stack with appropriate offsets: orange (100mm height) uses `off_pq+40` release clearance, green (200mm height) uses `off_pq+140` release clearance (lesson from Session 7)
+
+**Phase 2: "Random" was always alternating — LCG parity bug**
+
+**Bug:** The operator noticed boxes always came out orange-green-orange-green, never any other pattern.
+
+**Root cause analysis:**
+
+The LCG used multiplier `1103` (odd) and increment `12345` (odd), with decision based on `seed MOD 2`:
+
+```
+seed_next = seed * 1103 + 12345
+```
+
+Since `1103` is odd:
+- `even × odd + odd = odd` (even → odd)
+- `odd × odd + odd = even` (odd → even)
+
+The parity **always alternates** regardless of the seed value. Using `MOD 2` to decide box color means the sequence is deterministically alternating — not random at all. The `MOD 10000` operation preserves parity, so it doesn't help.
+
+This is a well-known weakness of LCGs: the least significant bit has period 2 when the multiplier is odd and the increment is odd.
+
+**Fix:** Two changes:
+1. Changed LCG constants to multiplier `137` and increment `2531` — these produce better bit mixing in higher-order digits
+2. Changed decision criterion from `seed MOD 2 = 0` to `seed > 5000` — this uses higher-order bits which have much better statistical properties than the LSB
+
+```rapid
+seed := (seed * 137 + 2531);
+seed := seed - Trunc(seed / 10000) * 10000;
+IF seed > 5000 THEN
+    box_type{i} := 1;  ! orange
+ELSE
+    box_type{i} := 2;  ! green
+ENDIF
+```
+
+Verification with multiple seed values confirmed non-alternating sequences:
+- seed=100 → green, green, green, orange
+- seed=201 → orange, orange, green, green
+- seed=350 → orange, green, green, orange
+
+**Phase 3: Placement logic**
+
+All boxes go to the left pallet (`WO_Place_pq`). Two separate placement procedures handle the different box heights:
+
+- `Place_orange_on_stack`: release at `off_pq+40`, increment `off_pq` by 100
+- `Place_green_on_stack`: release at `off_pq+140`, increment `off_pq` by 200
+
+This ensures proper stacking regardless of the random color sequence.
+
+**Final code structure:**
+```rapid
+PROC main()
+    MoveJ HOME ...
+    ! Seed from time
+    seed := GetTime(\Hour)*3600 + GetTime(\Min)*60 + GetTime(\Sec);
+    ! Pre-determine 4 box types
+    FOR i FROM 1 TO 4 DO
+        seed := (seed*137+2531);
+        seed := seed - Trunc(seed/10000)*10000;
+        IF seed > 5000 THEN box_type{i}:=1; ELSE box_type{i}:=2; ENDIF
+    ENDFOR
+    ! Generate boxes on conveyor
+    FOR i FROM 1 TO 4 DO
+        IF box_type{i}=1 THEN Set DO_Caja_pq; ELSE Set DO_Caja_gr; ENDIF
+        WaitTime 2;
+        IF box_type{i}=1 THEN Reset DO_Caja_pq; ELSE Reset DO_Caja_gr; ENDIF
+    ENDFOR
+    ! Pick and place all on left pallet
+    WHILE box_count < 4 DO
+        IF DI_Sensor_Inf=1 AND DI_Sensor_Sup=0 THEN PathCaja_pq; ...
+        IF DI_Sensor_Inf=1 AND DI_Sensor_Sup=1 THEN PathCaja_gr; ...
+    ENDWHILE
+    MoveJ HOME ...
+ENDPROC
+```
+
+**Phase 4: Increased to 6 boxes — stack height exceeded robot reach**
+
+Changed all loop bounds from 4 to 6 (`box_type{6}`, `FOR i FROM 1 TO 6`, `WHILE box_count < 6`). The program ran but on the last box placement, the stack was too tall for the IRB120 to reach safely. The robot arm extended to near-maximum height, causing it to collide with an already-placed box and knock it off the pallet.
+
+**Root cause:** Single-column stacking has a hard height limit determined by the robot's workspace envelope. With random box sizes:
+- Worst case: 6 green boxes × 200mm = 1200mm stack height
+- Best case: 6 orange boxes × 100mm = 600mm stack height
+- The placement target `Target_40_Place_pq` starts at Z=244 in the `WO_Place_pq` frame, and approach target `Target_50_pq` is at Z=486. Adding 800–1200mm of offset pushes the TCP well beyond the IRB120's vertical reach, and the approach motion collides with the top of the stack.
+
+**Common solutions for stack height overflow:**
+
+1. **Multi-column grid layout (2×3):** Instead of stacking all boxes in a single column, arrange them in rows and columns on the pallet. After reaching a safe height limit in column 1, offset in X or Y to start column 2. This keeps the maximum stack height within robot reach while using the full pallet surface area.
+
+2. **Height limit check:** Before each placement, check if `off_pq + box_height` exceeds a maximum safe value (e.g., 500mm). If exceeded, either stop, report an error, or switch to a secondary location.
+
+3. **Dual-pallet overflow:** Stack on the left pallet until the height limit is reached, then automatically switch to the right pallet (`WO_Place_gr`) for remaining boxes.
+
+4. **Reduce stacking, increase footprint:** Place boxes side-by-side on the pallet surface (no stacking) if the pallet is large enough. This avoids height issues entirely but requires more pallet area.
+
+For this setup, the most practical solution is **multi-column layout** — adding a Y-offset after every 2–3 boxes to start a new column, keeping the maximum stack height to 2–3 boxes (200–600mm).
+
+**Phase 5: Height limit testing — finding the safe MAX_STACK_HEIGHT**
+
+Implemented height check: before placing each box, verify `off_pq + box_height <= MAX_STACK_HEIGHT`. If exceeded, set `stack_full:=TRUE`, output warning via `TPWrite`, and exit the WHILE loop gracefully.
+
+Tested with **worst case scenario: 6 green boxes (200mm each)** to find the actual safe limit.
+
+| MAX_STACK_HEIGHT | off_pq=0 (box #1) | off_pq=200 (box #2) | off_pq=400 (box #3) | off_pq=600 (box #4) | Result |
+|---|---|---|---|---|---|
+| 700 | ✅ placed | ✅ placed | ✅ placed (corner path warning) | Blocked by limit | 3 boxes, no collision |
+| 800 | ✅ placed | ✅ placed | ❌ collision — knocked box off | ❌ collision | Boxes scattered on floor |
+
+**Analysis of the collision at off_pq=400:**
+
+At off_pq=400, the approach point `Target_50_pq` moves to Z=486+400=886 in the work object frame. The high approach `Target_60_pq` is at Z=1099. The gap between them shrinks from 613mm (at off_pq=0) to only 213mm. The robot arm must transition through a very tight vertical space while carrying a 200mm-tall box, and the box body collides with the top of the existing stack during the approach/retreat motion.
+
+At MAX=700, the 3rd green box (off_pq=400) succeeded but triggered "Corner path failure" warnings — the motion planner was already struggling. The 4th box (off_pq=600, approach Z=1086) would have only 13mm clearance below Target_60 — clearly unsafe.
+
+**Final decision: MAX_STACK_HEIGHT = 600**
+
+This is a conservative safe limit that:
+- Allows 6 orange boxes (6×100 = 600mm) — all fit ✅
+- Allows 3 green boxes (3×200 = 600mm) — all fit ✅
+- Allows mixed combinations up to 600mm total ✅
+- Keeps off_pq ≤ 400 for the last placement, which is the empirically verified safe maximum
+
+```rapid
+CONST num MAX_STACK_HEIGHT:=600;
+
+! Before placing:
+IF (off_pq + box_height) > MAX_STACK_HEIGHT THEN
+    TPWrite "Stack full!";
+    stack_full := TRUE;
+ENDIF
+```
+
+**Lessons learned:**
+1. LCG random number generators have a period-2 pattern in the least significant bit when both the multiplier and increment are odd — never use `MOD 2` for decisions
+2. Use higher-order bits (`> midpoint`) instead of `MOD 2` for binary decisions from LCGs
+3. Pre-determining random values in a loop before acting on them simplifies the control flow
+4. RAPID lacks a built-in random number function, so manual LCG implementation is necessary
+5. Single-column stacking has a hard height limit — with variable-size boxes, the worst-case stack height must be checked against the robot's workspace envelope. Multi-column grid layout is the standard industrial solution for high box counts
+6. Height limits must be tested empirically with worst-case box combinations (all tallest boxes). The theoretical robot reach is much larger than the practical safe stacking height due to approach/retreat path clearances and box body collisions during motion
+7. "Corner path failure" warnings from the motion planner are an early indicator that the robot is near its workspace limits — treat them as a signal to reduce the operating envelope
+
+**Phase 5 post-mortem: Flawed testing methodology**
+
+The height limit tests (MAX=700 and MAX=800) were conducted with a critical procedural error: **the simulation was not stopped/reset between test runs**. This caused:
+
+1. **Box accumulation:** Boxes from the first test (MAX=700, 6 green boxes) remained in the scene when the second test (MAX=800) started. The scene ended up with 16+ green boxes (Caja_gr_44 through Caja_gr_59) scattered across the floor and pallet.
+
+2. **Invalid test results:** The MAX=800 test was contaminated by leftover boxes from the MAX=700 run. The collisions observed may have been caused by the robot hitting old boxes from the previous test, not by the stack height being too high. The test conclusions about off_pq=400 causing collisions at MAX=800 are unreliable.
+
+3. **Correct procedure should have been:**
+   - Stop RAPID execution
+   - **Stop simulation** (`control_simulation stop`) to clear all dynamically created boxes
+   - Upload new test code
+   - Reset program pointer
+   - **Start simulation** before starting RAPID execution
+   - Then start RAPID execution
+
+4. **Scene state after the failed tests:** `get_scene_objects` revealed 16 green boxes (Caja_gr_44–Caja_gr_59) scattered at random positions with various rotations (many flipped/tumbled), plus 2 orange boxes on the floor. A complete mess.
+
+Despite the flawed methodology, the conservative MAX_STACK_HEIGHT=600 remains a reasonable choice because:
+- It passed cleanly in the MAX=700 test (which was the first test, uncontaminated)
+- It provides margin below the warning threshold observed at off_pq=400
+- It allows the full range of 6 orange boxes (600mm) or 3 green boxes (600mm)
+
+**Key lesson:** When running iterative physical simulation tests, always reset the simulation environment between runs. Accumulated objects from previous runs invalidate test results and can cause false collision detections.
+
+---
+
+### Session 9: Simulation Reset — Clearing Dynamic Objects via MCP
+
+**Goal:** Add a `reset` action to the `control_simulation` MCP tool that clears all dynamically created boxes from the scene, equivalent to RobotStudio's "Stop and Reset Simulation" button.
+
+**Phase 1: TypeScript validation bug**
+
+Added `reset` to the tool definition enum but forgot to update the handler's validation check at line 622 of `server.ts`. The enum listed `["start", "stop", "reset"]` but the handler still only accepted `["start", "stop"]`. Fixed by adding `"reset"` to the handler validation.
+
+**Phase 2: SavedState approach — failed**
+
+Initial research found `SavedState.RestoreAsync()` API, which should restore the station to a previously saved state. Implementation: iterate `station.SavedStates`, call `CanRestore()` then `RestoreAsync().Wait()`.
+
+**Result:** API returned "reset to saved state" but boxes remained. The SavedState was captured after boxes already existed, so restoring it just restored the state with boxes.
+
+**Phase 3: Manual deletion approach — "Deleted 0"**
+
+Switched to manually finding and deleting dynamic objects by name pattern (`Caja_gr_N`, `Caja_pq_N`). First implementation used `SmartComponent.GraphicComponents` to iterate children.
+
+**Result:** Found 0 objects every time. The traversal wasn't finding the boxes.
+
+**Phase 4: Debug diagnostics revealed the traversal issue**
+
+Added diagnostic output to the reset response showing object hierarchy, child counts, and match results. The debug output revealed:
+
+1. ✅ Top-level traversal found `SC_Conveyor` (the parent SmartComponent)
+2. ✅ Using `comp.Children` (same API as `get_scene_objects`) found all 6 boxes: `MATCH:Caja_gr_1` through `MATCH:Caja_gr_6`
+3. ❌ Deletion failed with `"Parent must be null"` for all 6 objects
+
+The key issue was that the original code used `sc.GraphicComponents` to find children, but the working `get_scene_objects` code used `comp.Children`. These are different APIs — `Children` returns all child objects, while `GraphicComponents` may return a different subset.
+
+**Phase 5: "Parent must be null" — must detach before deleting**
+
+RobotStudio SDK requires objects to be removed from their parent before calling `Delete()`. The boxes are children of `SC_Conveyor` SmartComponent.
+
+**Fix:**
+```csharp
+var parent = obj.Parent as SmartComponent;
+if (parent != null)
+{
+    parent.GraphicComponents.Remove(obj);
+}
+obj.Delete();
+```
+
+**Phase 6: UI thread requirement**
+
+All scene graph operations must execute on RobotStudio's UI thread via `GraphicControl.ActiveGraphicControl.BeginInvoke()`. Without this, `station.GraphicComponents` access silently returns no results or throws.
+
+**Final working implementation:**
+
+```csharp
+case "reset":
+    Simulator.Stop();
+    // On UI thread: find Caja_gr_N / Caja_pq_N children, detach from parent, delete
+    gc.BeginInvoke(() => {
+        foreach (top-level component) {
+            foreach (child in comp.Children) {
+                if name matches "Caja_gr_N" or "Caja_pq_N" → collect for deletion
+            }
+        }
+        foreach (obj in toDelete) {
+            parent.GraphicComponents.Remove(obj);  // detach first
+            obj.Delete();                           // then delete
+        }
+    });
+```
+
+**Result:** `Simulation reset. Deleted 6.` — all dynamic boxes cleared successfully.
+
+**Also fixed: Simulation start order**
+
+Discovered that RAPID execution requires the simulation (physics engine) to be running first. The correct sequence is:
+1. `control_simulation` → `start` (starts physics)
+2. `control_rapid_execution` → `resetpp`
+3. `control_rapid_execution` → `start`
+
+Without step 1, the SmartComponent Source cannot generate boxes even when RAPID signals are set.
+
+**Lessons learned:**
+1. RobotStudio's `GraphicComponent.Children` and `SmartComponent.GraphicComponents` are different APIs — use `Children` for reliable child enumeration
+2. Must call `parent.GraphicComponents.Remove(obj)` before `obj.Delete()` — "Parent must be null" error otherwise
+3. All scene graph operations must execute on the UI thread via `BeginInvoke`
+4. Adding diagnostic debug output to API responses is invaluable for debugging — silent `catch {}` blocks hide critical failure information
+5. `SavedState.RestoreAsync()` restores to when the state was saved, which may include dynamic objects — it's not equivalent to "clear all runtime objects"
+6. Simulation (physics) must be started before RAPID execution for SmartComponent Source objects to function
+
+---
+
 ## Lessons Learned
 
 ### About RobotStudio SDK

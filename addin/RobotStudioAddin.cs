@@ -443,9 +443,66 @@ namespace RobotStudioMcpAddin
                             message = "Simulation is not running.";
                         }
                         break;
+                    case "reset":
+                        if (IsSimulationRunning())
+                        {
+                            Simulator.Stop();
+                        }
+                        // Delete dynamically created boxes (Caja_gr_N, Caja_pq_N) on UI thread
+                        int deletedCount = 0;
+                        var gc2 = GraphicControl.ActiveGraphicControl;
+                        if (gc2 != null)
+                        {
+                            var resetWait = new ManualResetEvent(false);
+                            gc2.BeginInvoke(new Action(() =>
+                            {
+                                try
+                                {
+                                    var toDelete = new List<GraphicComponent>();
+                                    for (int idx = 0; idx < station.GraphicComponents.Count; idx++)
+                                    {
+                                        var c = station.GraphicComponents[idx];
+                                        try
+                                        {
+                                            foreach (var child in c.Children)
+                                            {
+                                                var childGc = child as GraphicComponent;
+                                                if (childGc == null) continue;
+                                                string n = childGc.Name ?? "";
+                                                if ((n.StartsWith("Caja_gr_") || n.StartsWith("Caja_pq_"))
+                                                    && int.TryParse(n.Substring(8), out _))
+                                                {
+                                                    toDelete.Add(childGc);
+                                                }
+                                            }
+                                        }
+                                        catch { }
+                                    }
+                                    foreach (var obj in toDelete)
+                                    {
+                                        try
+                                        {
+                                            var parent = obj.Parent as SmartComponent;
+                                            if (parent != null)
+                                            {
+                                                parent.GraphicComponents.Remove(obj);
+                                            }
+                                            obj.Delete();
+                                            deletedCount++;
+                                        }
+                                        catch { }
+                                    }
+                                }
+                                catch { }
+                                finally { resetWait.Set(); }
+                            }));
+                            resetWait.WaitOne(10000);
+                        }
+                        message = "Simulation reset. Deleted " + deletedCount + " dynamic objects.";
+                        break;
                     default:
                         statusCode = 400;
-                        return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Invalid Action", Message = "Unknown action '" + action + "'. Use 'start' or 'stop'." });
+                        return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Invalid Action", Message = "Unknown action '" + action + "'. Use 'start', 'stop', or 'reset'." });
                 }
 
                 statusCode = 200;
