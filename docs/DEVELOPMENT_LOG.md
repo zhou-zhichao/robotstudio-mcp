@@ -676,6 +676,234 @@ Without step 1, the SmartComponent Source cannot generate boxes even when RAPID 
 
 ---
 
+### Session 10: Green Box Dual-Stack Layer-by-Layer Palletizing
+
+**Goal:** Place 6 green boxes on the left pallet (`WO_Place_pq`) in **two stacks of 3**, using a **layer-by-layer** placement strategy (stack1 layer1 → stack2 layer1 → stack1 layer2 → stack2 layer2 → stack1 layer3 → stack2 layer3).
+
+**Phase 1: Initial attempt — all boxes generated first (3 failures)**
+
+First three attempts all used the same flawed approach from Session 8: generate all 6 boxes on the conveyor first, then pick them one by one.
+
+**Failure 1: Used WO_Place_gr workobject — unreachable targets**
+
+Created place targets relative to `WO_Place_gr` (the other pallet at world y≈-1.365m) using the same confdata `[-2,0,-1,0]` copied from the working `WO_Place_pq` targets. The robot stopped with a motion error during `Place_green`. The confdata is pallet-specific — the robot needs different joint configurations to reach opposite sides of the workspace. Switched to using `WO_Place_pq` with Y-offsets for the two stacks.
+
+**Failure 2 & 3: Boxes generated correctly but fell during placement**
+
+Used `WO_Place_pq` with two Y-offsets (±120mm) for the two stack positions. Some boxes (4 out of 6) were placed correctly in two stacks, but others fell to the ground or flew away. Each run also produced more boxes than expected (8-9 instead of 6).
+
+**Root cause (identified by the human operator):**
+
+> 传送带上放到大概第四个绿方块的时候，就到头了。传送带就不动了。这个时候你还在下方块。就导致后面下的方块没有规整在传送带上，或者堆叠起来了。
+
+Translation: The conveyor fills up at around the 4th green box — it reaches the end and stops. But the program keeps generating more boxes, which pile up, stack on each other, or fall off the conveyor.
+
+**Why the AI (Claude) failed to diagnose this:**
+
+The AI never took screenshots during the **box generation phase** — only after long waits when the full cycle was expected to be complete. By that time, the damage was done (boxes scattered, extra boxes generated) and the AI misdiagnosed the problem as:
+- Wrong confdata for WO_Place_gr targets
+- X-offset too large causing boxes to fall off the pallet
+- PulseDO generating extra boxes
+
+The real problem was upstream (conveyor overflow), not downstream (placement). The AI's debugging methodology was flawed: it should have inspected the system state at each critical phase (generation → transport → pickup → placement) rather than only checking the final result.
+
+**Phase 2: Fix — Generate-Pick-Place interleaved loop**
+
+Replaced the "generate all then pick all" pattern with an interleaved loop:
+
+```rapid
+WHILE box_count < 6 DO
+    ! Generate ONE green box
+    Set DO_Caja_gr;
+    WaitTime 2;
+    Reset DO_Caja_gr;
+
+    ! Wait for it to reach the sensor
+    WaitUntil DI_Sensor_Inf=1 AND DI_Sensor_Sup=1;
+    WaitTime 0.5;
+
+    ! Determine which stack (layer-by-layer alternation)
+    IF (box_count MOD 2) = 0 THEN
+        current_y_off := STACK1_Y;   ! -120mm
+        current_height := stack1_height;
+    ELSE
+        current_y_off := STACK2_Y;   ! +120mm
+        current_height := stack2_height;
+    ENDIF
+
+    ! Pick and place
+    Path_Pick_gr;
+    Place_green current_y_off, current_height;
+
+    ! Update the appropriate stack height
+    IF (box_count MOD 2) = 0 THEN
+        stack1_height := stack1_height + 200;
+    ELSE
+        stack2_height := stack2_height + 200;
+    ENDIF
+    box_count := box_count + 1;
+ENDWHILE
+```
+
+This ensures the conveyor only ever has 1 box at a time. No overflow possible.
+
+**Phase 3: Verification with step-by-step screenshots**
+
+This time, applied the lesson learned: took screenshots at intermediate stages instead of waiting for the full cycle.
+
+- After ~25s: First box being picked from conveyor. Conveyor clean, only 1 box. ✓
+- After ~55s: Two boxes stacked on pallet, new box being conveyed. ✓
+- After full cycle: Program completed (status: Stopped at main). ✓
+
+**Final result — all 6 boxes correctly placed:**
+
+| Layer | Stack 1 (Y≈1.26m) | Stack 2 (Y≈1.02m) |
+|-------|--------------------|--------------------|
+| 3rd   | z = 0.748m ✓       | z = 0.748m ✓       |
+| 2nd   | z = 0.548m ✓       | z = 0.548m ✓       |
+| 1st   | z = 0.348m ✓       | z = 0.348m ✓       |
+
+All boxes have consistent orientation, no tipping, no falling. Layer-by-layer order verified correct.
+
+![Dual stack result](images/session10_dual_stack_result.png)
+
+**Key parameters:**
+- Two stacks offset by Y ±120mm (240mm center-to-center)
+- Green box height: 200mm per layer
+- Release clearance: +140mm above current stack top
+- Placement speed: v100 (slow for precision at release point)
+- Approach/retreat speed: v300
+
+**Lessons learned:**
+
+1. **Conveyor capacity is a physical constraint** — the conveyor can hold approximately 4 green boxes. Generating more causes overflow, pileup, and cascading failures. This applies to any conveyor system: always consider throughput vs. capacity.
+
+2. **Generate-Pick-Place interleaving is mandatory** when the total box count exceeds conveyor capacity. This is the standard industrial pattern — real production lines don't pre-stage all parts on the conveyor.
+
+3. **Debug by observing intermediate states, not just final results.** The AI wasted 3 full simulation runs (~5 minutes each) because it only checked screenshots after the full cycle. A single screenshot during the generation phase would have immediately revealed the conveyor overflow.
+
+4. **When the same code pattern fails repeatedly, look upstream.** The AI kept adjusting downstream parameters (place offsets, confdata, generation timing) when the root cause was the very first step (batch generation). Industrial debugging wisdom: "if the output is wrong, check the input first."
+
+5. **WO_Place_gr targets need different confdata** than WO_Place_pq. The two pallets are on opposite sides of the robot, requiring different joint configurations. This was not investigated further — the task was completed using WO_Place_pq with Y-offsets instead.
+
+---
+
+### Session 11: Pyramid Stacking — Generalization Test
+
+**Goal:** Test the generality of the MCP tool system by giving the AI a novel spatial arrangement task it has never attempted before. The task is described purely in natural language with no code hints:
+
+> Place 5 green boxes on the left pallet (WO_Place_pq):
+> - Bottom layer: 2 boxes side by side (Y direction)
+> - Top layer: 1 box centered on top of the bottom two (pyramid)
+> - Next to the pyramid: a 2-layer vertical tower
+
+**Context:** This experiment was designed as a **thesis evaluation** — testing whether the MCP system generalizes beyond the specific tasks it was developed for (single-column stacking, dual-column layer-by-layer, random sorting). A pyramid requires precise spatial reasoning (side-by-side spacing, centered top placement) that was never attempted in Sessions 1–10.
+
+**Phase 1: Spatial reasoning and program design**
+
+The AI needed to determine several parameters from first principles:
+
+1. **Side-by-side spacing:** Green boxes are ~200mm wide. Setting Y offsets to ±100mm (200mm center-to-center) places two boxes edge-to-edge with no gap.
+2. **Centered top placement:** The pyramid top box at Y=0 sits exactly at the midpoint of Y=-100 and Y=+100, resting half on each bottom box.
+3. **Tower offset:** Y=+300mm places the tower 200mm away from the nearest pyramid box, close enough to be "next to" the pyramid but not overlapping.
+4. **Height calculations:** Top layer (pyramid and tower 2nd layer) both at z_off=200mm (one green box height).
+
+The AI correctly applied lessons from previous sessions without being prompted:
+- **Generate-Pick-Place interleaving** (Session 10 lesson): one box at a time on the conveyor
+- **+140mm release clearance** (Session 7 lesson): for green boxes on pq side
+- **MoveJ HOME safe start** (Session 5 lesson): first instruction is MoveJ to home
+- **Single merged module** (Session 7 lesson): all tool/wobj declarations in Module1
+
+**Phase 2: Code structure**
+
+Instead of a generic loop, the AI wrote explicit sequential steps for clarity:
+
+```rapid
+PROC main()
+    MoveJ HOME,v1000,fine,TCP_VentosaTool\WObj:=wobj0;
+
+    ! --- Pyramid: bottom layer ---
+    GenerateAndPick;
+    Place_green PYR_LEFT, 0;      ! Y=-100, Z=0
+
+    GenerateAndPick;
+    Place_green PYR_RIGHT, 0;     ! Y=+100, Z=0
+
+    ! --- Pyramid: top center ---
+    GenerateAndPick;
+    Place_green PYR_CENTER, GREEN_HEIGHT;  ! Y=0, Z=200
+
+    ! --- Tower next to pyramid ---
+    GenerateAndPick;
+    Place_green TOWER_Y, 0;       ! Y=+300, Z=0
+
+    GenerateAndPick;
+    Place_green TOWER_Y, GREEN_HEIGHT;    ! Y=+300, Z=200
+
+    MoveJ HOME,v1000,fine,TCP_VentosaTool\WObj:=wobj0;
+ENDPROC
+```
+
+The same `Place_green(y_off, z_off)` procedure from Session 10 was reused without modification — demonstrating that the placement interface is general enough for arbitrary spatial layouts.
+
+**Phase 3: Execution — first-attempt success**
+
+The program ran to completion on the **first attempt** with zero errors.
+
+**Intermediate screenshot** (~95 seconds in): Pyramid bottom layer complete (2 boxes side by side), robot carrying 3rd/4th box toward placement.
+
+![Pyramid construction midway](images/session11_pyramid_midway.png)
+
+**Final screenshot** (program completed): All 5 boxes in position — pyramid (3) + tower (2).
+
+![Pyramid and tower final result](images/session11_pyramid_final.png)
+
+**Phase 4: Verification via scene object positions**
+
+`get_scene_objects` confirmed exact positions (global coordinates, meters):
+
+| Box | Y (m) | Z (m) | Role | Rotation |
+|-----|--------|--------|------|----------|
+| Caja_gr_75 | 1.24 | 0.348 | Pyramid bottom-left | r(0,0,-1.571) |
+| Caja_gr_76 | 1.04 | 0.348 | Pyramid bottom-right | r(0,0,-1.571) |
+| Caja_gr_77 | 1.14 | 0.548 | Pyramid top-center | r(0,0,-1.571) |
+| Caja_gr_78 | 0.84 | 0.348 | Tower base | r(0,0,-1.571) |
+| Caja_gr_79 | 0.84 | 0.548 | Tower top | r(0,0,-1.571) |
+
+**Geometric verification:**
+
+- Bottom layer spacing: 1.24 - 1.04 = **200mm** (boxes touching, correct)
+- Top centered: 1.14 = (1.24 + 1.04) / 2 = **1.14** (perfectly centered)
+- Pyramid height: 0.548 - 0.348 = **200mm** (one box height, correct)
+- Tower stacking: 0.548 - 0.348 = **200mm** (correct)
+- Tower-to-pyramid gap: 1.04 - 0.84 = **200mm** (one box width, no overlap)
+- All boxes same orientation: r(0,0,-1.571) = -90° around Z (consistent)
+
+**Experiment metrics (for thesis Discussion):**
+
+| Metric | Value |
+|--------|-------|
+| Attempts to success | **1** (first try) |
+| RAPID iterations | 0 (no code modifications needed) |
+| Total time (prompt → success) | ~4 minutes |
+| Boxes placed correctly | 5/5 (100%) |
+| Boxes fallen/tipped | 0 |
+| Previous lessons reused | 4 (interleaving, release height, safe start, merged module) |
+| Novel spatial reasoning | Side-by-side spacing, centered top, tower offset |
+
+**Significance for thesis:**
+
+This experiment demonstrates that the MCP tool system **generalizes** to novel spatial arrangements. The AI:
+
+1. **Did not require any new MCP tools** — the existing `upload_rapid_module`, `control_simulation`, `get_screenshot`, and `get_scene_objects` tools were sufficient
+2. **Correctly performed spatial reasoning** — calculating box spacing, centering, and offsets from first principles
+3. **Automatically applied accumulated experience** — 4 critical lessons from Sessions 5–10 were applied without explicit prompting
+4. **Achieved first-attempt success** — compared to Sessions 7 (11 attempts), 8 (multiple iterations), and 10 (4 attempts), the improvement is dramatic
+
+The contrast between Session 10 (4 failed attempts before success on a simpler dual-stack task) and Session 11 (first-attempt success on a more complex pyramid task) shows that the **combination of well-designed MCP tools + accumulated experience (CLAUDE.md)** produces compounding returns: later tasks succeed faster despite being more complex.
+
+---
+
 ## Lessons Learned
 
 ### About RobotStudio SDK
