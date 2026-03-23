@@ -251,13 +251,17 @@ namespace RobotStudioMcpAddin
                             if (method != "GET" && method != "POST") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
                             responseJson = HandleGetSceneObjects(body, out statusCode);
                             break;
+                        case "/rapid/variables":
+                            if (method != "GET" && method != "POST") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
+                            responseJson = HandleListVariables(body, out statusCode);
+                            break;
                         default:
                             statusCode = 404;
                             responseJson = JsonConvert.SerializeObject(new ErrorResponse
                             {
                                 Success = false,
                                 Error = "Not Found",
-                                Message = "Endpoint '" + path + "' not found. Available: /health, /joints, /status, /simulation, /rapid/upload, /rapid/execute, /rapid/status, /rapid/source, /rapid/modules, /rapid/errors, /rapid/variable, /rapid/variable/set, /io/signals, /io/signals/set, /scene/objects, /screenshot"
+                                Message = "Endpoint '" + path + "' not found. Available: /health, /joints, /status, /simulation, /rapid/upload, /rapid/execute, /rapid/status, /rapid/source, /rapid/modules, /rapid/errors, /rapid/variable, /rapid/variable/set, /rapid/variables, /io/signals, /io/signals/set, /scene/objects, /screenshot"
                             });
                             break;
                     }
@@ -1595,6 +1599,145 @@ namespace RobotStudioMcpAddin
             }
         }
 
+        private static string HandleListVariables(string body, out int statusCode)
+        {
+            try
+            {
+                ListVariablesRequest request;
+                if (string.IsNullOrWhiteSpace(body))
+                    request = new ListVariablesRequest();
+                else
+                    request = JsonConvert.DeserializeObject<ListVariablesRequest>(body) ?? new ListVariablesRequest();
+
+                string taskName = string.IsNullOrEmpty(request.TaskName) ? "T_ROB1" : request.TaskName;
+
+                var station = Project.ActiveProject as Station;
+                if (station == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Active Station", Message = "No station is currently open in RobotStudio." });
+                }
+
+                Controller controller = TryGetController(station);
+                if (controller == null)
+                {
+                    statusCode = 404;
+                    return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "No Controller", Message = "No virtual controller found in the station." });
+                }
+
+                using (controller)
+                {
+                    controller.Logon(UserInfo.DefaultUser);
+
+                    ABB.Robotics.Controllers.RapidDomain.Task rapidTask = controller.Rapid.GetTask(taskName);
+                    if (rapidTask == null)
+                    {
+                        statusCode = 404;
+                        return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "Task Not Found", Message = "RAPID task '" + taskName + "' not found." });
+                    }
+
+                    ABB.Robotics.Controllers.RapidDomain.Module[] modules = rapidTask.GetModules();
+                    var variableList = new List<RapidVariableInfo>();
+
+                    // Regex to match RAPID variable declarations:
+                    // (TASK PERS|LOCAL VAR|LOCAL PERS|LOCAL CONST|VAR|PERS|CONST) <type> <name> [:= <value>] ;
+                    var declRegex = new System.Text.RegularExpressions.Regex(
+                        @"(?:^|\n)\s*(TASK\s+PERS|LOCAL\s+VAR|LOCAL\s+PERS|LOCAL\s+CONST|VAR|PERS|CONST)\s+(\w+)\s+(\w+)\s*(?::=|;)",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Multiline);
+
+                    for (int i = 0; i < modules.Length; i++)
+                    {
+                        string modName = modules[i].Name;
+
+                        // Filter by moduleName if provided
+                        if (!string.IsNullOrEmpty(request.ModuleName) &&
+                            !string.Equals(modName, request.ModuleName, StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        // Skip system modules unless explicitly requested
+                        if (string.IsNullOrEmpty(request.ModuleName))
+                        {
+                            if (string.Equals(modName, "BASE", StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(modName, "user", StringComparison.OrdinalIgnoreCase))
+                                continue;
+                        }
+
+                        // Read module source to find declarations
+                        string sourceCode = "";
+                        try
+                        {
+                            ABB.Robotics.Controllers.RapidDomain.Module mod = rapidTask.GetModule(modName);
+                            if (mod == null) continue;
+
+                            string tempDir = Path.Combine(Path.GetTempPath(), "rsmcp_lv_" + Guid.NewGuid().ToString("N"));
+                            Directory.CreateDirectory(tempDir);
+                            string tempFilePath = Path.Combine(tempDir, modName + ".mod");
+                            try
+                            {
+                                mod.SaveToFile(tempDir);  // SaveToFile takes a DIRECTORY path
+                                sourceCode = File.ReadAllText(tempFilePath, Encoding.UTF8);
+                            }
+                            finally
+                            {
+                                try { Directory.Delete(tempDir, true); } catch { }
+                            }
+                        }
+                        catch { continue; }
+
+                        // Parse declarations
+                        var matches = declRegex.Matches(sourceCode);
+                        for (int m = 0; m < matches.Count; m++)
+                        {
+                            string scope = matches[m].Groups[1].Value.Trim();
+                            string dataType = matches[m].Groups[2].Value;
+                            string varName = matches[m].Groups[3].Value;
+
+                            // Filter by type if provided
+                            if (!string.IsNullOrEmpty(request.TypeFilter) &&
+                                !string.Equals(dataType, request.TypeFilter, StringComparison.OrdinalIgnoreCase))
+                                continue;
+
+                            // Read current runtime value
+                            string value = "";
+                            try
+                            {
+                                RapidData rd = rapidTask.GetRapidData(modName, varName);
+                                if (rd != null)
+                                {
+                                    value = rd.Value.ToString();
+                                    dataType = rd.RapidType; // Use runtime type (more accurate)
+                                }
+                            }
+                            catch { }
+
+                            variableList.Add(new RapidVariableInfo
+                            {
+                                ModuleName = modName,
+                                Name = varName,
+                                DataType = dataType,
+                                Scope = scope.ToUpper().Replace("  ", " "),
+                                Value = value
+                            });
+                        }
+                    }
+
+                    statusCode = 200;
+                    return JsonConvert.SerializeObject(new ListVariablesResponse
+                    {
+                        Success = true,
+                        TaskName = taskName,
+                        VariableCount = variableList.Count,
+                        Variables = variableList
+                    }, Formatting.Indented);
+                }
+            }
+            catch (Exception ex)
+            {
+                statusCode = 500;
+                return JsonConvert.SerializeObject(new ErrorResponse { Success = false, Error = "List Variables Error", Message = ex.Message });
+            }
+        }
+
         private static string HandleGetIOSignals(string body, out int statusCode)
         {
             try
@@ -2143,6 +2286,31 @@ namespace RobotStudioMcpAddin
         [JsonProperty("height")] public int Height { get; set; }
         [JsonProperty("mimeType")] public string MimeType { get; set; }
         [JsonProperty("timestamp")] public string Timestamp { get; set; }
+    }
+
+    // List RAPID Variables
+    public class ListVariablesRequest
+    {
+        [JsonProperty("taskName")] public string TaskName { get; set; }
+        [JsonProperty("moduleName")] public string ModuleName { get; set; }
+        [JsonProperty("typeFilter")] public string TypeFilter { get; set; }
+    }
+
+    public class ListVariablesResponse
+    {
+        [JsonProperty("success")] public bool Success { get; set; }
+        [JsonProperty("taskName")] public string TaskName { get; set; }
+        [JsonProperty("variableCount")] public int VariableCount { get; set; }
+        [JsonProperty("variables")] public List<RapidVariableInfo> Variables { get; set; }
+    }
+
+    public class RapidVariableInfo
+    {
+        [JsonProperty("moduleName")] public string ModuleName { get; set; }
+        [JsonProperty("name")] public string Name { get; set; }
+        [JsonProperty("dataType")] public string DataType { get; set; }
+        [JsonProperty("scope")] public string Scope { get; set; }
+        [JsonProperty("value")] public string Value { get; set; }
     }
 
     #endregion

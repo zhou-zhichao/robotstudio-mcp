@@ -165,6 +165,21 @@ interface SetIOSignalResponse {
   logicalState?: string;
 }
 
+interface RapidVariableInfoData {
+  moduleName: string;
+  name: string;
+  dataType: string;
+  scope: string;
+  value: string;
+}
+
+interface ListVariablesResponse {
+  success: boolean;
+  taskName: string;
+  variableCount: number;
+  variables: RapidVariableInfoData[];
+}
+
 interface PositionData {
   x: number;
   y: number;
@@ -569,6 +584,32 @@ function createServer(): Server {
             },
           },
           required: ["variableName", "value"],
+        },
+      },
+      {
+        name: "list_rapid_variables",
+        description:
+          "List all RAPID variable declarations (VAR, PERS, CONST) across modules in a task. Useful for discovering workobjects (wobjdata), robot targets (robtarget), tool data (tooldata), and other RAPID data without knowing variable names in advance. Returns variable name, data type, scope, and current value. Use typeFilter to find specific types (e.g. 'wobjdata' for work objects, 'robtarget' for targets, 'tooldata' for tools).",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            typeFilter: {
+              type: "string",
+              description:
+                "Optional: filter by RAPID data type (e.g. 'wobjdata', 'robtarget', 'tooldata', 'num', 'bool'). Case-insensitive.",
+            },
+            moduleName: {
+              type: "string",
+              description:
+                "Optional: only list variables from this module. If omitted, scans all non-system modules.",
+            },
+            taskName: {
+              type: "string",
+              description:
+                "RAPID task name. Defaults to 'T_ROB1'.",
+            },
+          },
+          required: [],
         },
       },
       {
@@ -1078,6 +1119,50 @@ function createServer(): Server {
               text: `${setVarResponse.moduleName}/${setVarResponse.variableName}: ${setVarResponse.previousValue} -> ${setVarResponse.newValue}`,
             },
           ],
+        };
+      }
+
+      case "list_rapid_variables": {
+        const lvArgs = args as {
+          typeFilter?: string;
+          moduleName?: string;
+          taskName?: string;
+        };
+
+        const lvBody: Record<string, string> = {};
+        if (lvArgs?.typeFilter) lvBody.typeFilter = lvArgs.typeFilter;
+        if (lvArgs?.moduleName) lvBody.moduleName = lvArgs.moduleName;
+        if (lvArgs?.taskName) lvBody.taskName = lvArgs.taskName;
+
+        const lvResponse =
+          await fetchFromRobotStudio<ListVariablesResponse>(
+            "/rapid/variables",
+            {
+              method: "POST",
+              body: JSON.stringify(lvBody),
+            }
+          );
+
+        if (lvResponse.variables.length === 0) {
+          return {
+            content: [
+              { type: "text", text: "No variables found." },
+            ],
+          };
+        }
+
+        const lvLines: string[] = [];
+        lvLines.push(
+          `${lvResponse.variableCount} variables in task ${lvResponse.taskName}:`
+        );
+        for (const v of lvResponse.variables) {
+          lvLines.push(
+            `  ${v.scope} ${v.dataType} ${v.moduleName}/${v.name} = ${v.value}`
+          );
+        }
+
+        return {
+          content: [{ type: "text", text: lvLines.join("\n") }],
         };
       }
 
