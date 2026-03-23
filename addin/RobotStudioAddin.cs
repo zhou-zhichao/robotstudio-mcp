@@ -1209,9 +1209,10 @@ namespace RobotStudioMcpAddin
                     });
                 }
 
-                // Parse optional width/height from request body
+                // Parse optional width/height/savePath from request body
                 int width = 1280;
                 int height = 720;
+                string savePath = null;
                 if (!string.IsNullOrWhiteSpace(body))
                 {
                     try
@@ -1221,6 +1222,7 @@ namespace RobotStudioMcpAddin
                         {
                             if (req.Width > 0) width = Math.Min(req.Width, 3840);
                             if (req.Height > 0) height = Math.Min(req.Height, 2160);
+                            if (!string.IsNullOrWhiteSpace(req.SavePath)) savePath = req.SavePath;
                         }
                     }
                     catch { /* use defaults */ }
@@ -1302,16 +1304,37 @@ namespace RobotStudioMcpAddin
                     });
                 }
 
+                // Save to disk if savePath was provided
+                string savedPath = null;
+                if (savePath != null && base64Data != null)
+                {
+                    try
+                    {
+                        var dir = Path.GetDirectoryName(savePath);
+                        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                            Directory.CreateDirectory(dir);
+                        File.WriteAllBytes(savePath, Convert.FromBase64String(base64Data));
+                        savedPath = savePath;
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.AddMessage(new LogMessage("Screenshot save failed: " + ex.Message));
+                    }
+                }
+
                 statusCode = 200;
                 return JsonConvert.SerializeObject(new ScreenshotResponse
                 {
                     Success = true,
-                    Message = "Screenshot captured successfully.",
+                    Message = savedPath != null
+                        ? "Screenshot captured and saved to " + savedPath
+                        : "Screenshot captured successfully.",
                     ImageBase64 = base64Data,
                     Width = actualWidth,
                     Height = actualHeight,
                     MimeType = "image/png",
-                    Timestamp = DateTime.UtcNow.ToString("o")
+                    Timestamp = DateTime.UtcNow.ToString("o"),
+                    SavedPath = savedPath
                 });
             }
             catch (Exception ex)
@@ -1472,6 +1495,25 @@ namespace RobotStudioMcpAddin
                 obj.Visible = comp.Visible;
             }
             catch { obj.Visible = true; }
+
+            // Get bounding box (local geometry size)
+            // Always set a value - use real BB if available, otherwise dummy
+            obj.BoundingBox = new BoundingBoxData
+            {
+                SizeX = -999, SizeY = -999, SizeZ = -999,
+                Min = new PositionData { X = 0, Y = 0, Z = 0 },
+                Max = new PositionData { X = 0, Y = 0, Z = 0 }
+            };
+            try
+            {
+                var bb = comp.GetBoundingBox(true);
+                obj.BoundingBox.Min = new PositionData { X = Math.Round(bb.min.x, 1), Y = Math.Round(bb.min.y, 1), Z = Math.Round(bb.min.z, 1) };
+                obj.BoundingBox.Max = new PositionData { X = Math.Round(bb.max.x, 1), Y = Math.Round(bb.max.y, 1), Z = Math.Round(bb.max.z, 1) };
+                obj.BoundingBox.SizeX = Math.Round(bb.max.x - bb.min.x, 1);
+                obj.BoundingBox.SizeY = Math.Round(bb.max.y - bb.min.y, 1);
+                obj.BoundingBox.SizeZ = Math.Round(bb.max.z - bb.min.z, 1);
+            }
+            catch { /* keep dummy values -999 to indicate failure */ }
 
             // If name filter is active and this item doesn't match, only include if a child matches
             bool nameMatches = string.IsNullOrEmpty(nameFilter) || (comp.Name != null && comp.Name.IndexOf(nameFilter, StringComparison.OrdinalIgnoreCase) >= 0);
@@ -2213,6 +2255,7 @@ namespace RobotStudioMcpAddin
         [JsonProperty("position", NullValueHandling = NullValueHandling.Ignore)] public PositionData Position { get; set; }
         [JsonProperty("globalPosition", NullValueHandling = NullValueHandling.Ignore)] public PositionData GlobalPosition { get; set; }
         [JsonProperty("eulerAngles", NullValueHandling = NullValueHandling.Ignore)] public EulerAnglesData EulerAngles { get; set; }
+        [JsonProperty("boundingBox", NullValueHandling = NullValueHandling.Ignore)] public BoundingBoxData BoundingBox { get; set; }
         [JsonProperty("children", NullValueHandling = NullValueHandling.Ignore)]
         public List<SceneObjectData> Children { get; set; }
     }
@@ -2229,6 +2272,15 @@ namespace RobotStudioMcpAddin
         [JsonProperty("rx")] public double RX { get; set; }
         [JsonProperty("ry")] public double RY { get; set; }
         [JsonProperty("rz")] public double RZ { get; set; }
+    }
+
+    public class BoundingBoxData
+    {
+        [JsonProperty("min")] public PositionData Min { get; set; }
+        [JsonProperty("max")] public PositionData Max { get; set; }
+        [JsonProperty("sizeX")] public double SizeX { get; set; }
+        [JsonProperty("sizeY")] public double SizeY { get; set; }
+        [JsonProperty("sizeZ")] public double SizeZ { get; set; }
     }
 
     // Set RAPID Variable
@@ -2275,6 +2327,7 @@ namespace RobotStudioMcpAddin
     {
         [JsonProperty("width")] public int Width { get; set; }
         [JsonProperty("height")] public int Height { get; set; }
+        [JsonProperty("savePath")] public string SavePath { get; set; }
     }
 
     public class ScreenshotResponse
@@ -2286,6 +2339,7 @@ namespace RobotStudioMcpAddin
         [JsonProperty("height")] public int Height { get; set; }
         [JsonProperty("mimeType")] public string MimeType { get; set; }
         [JsonProperty("timestamp")] public string Timestamp { get; set; }
+        [JsonProperty("savedPath")] public string SavedPath { get; set; }
     }
 
     // List RAPID Variables

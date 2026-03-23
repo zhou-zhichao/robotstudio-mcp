@@ -902,6 +902,74 @@ This experiment demonstrates that the MCP tool system **generalizes** to novel s
 
 The contrast between Session 10 (4 failed attempts before success on a simpler dual-stack task) and Session 11 (first-attempt success on a more complex pyramid task) shows that the **combination of well-designed MCP tools + accumulated experience (CLAUDE.md)** produces compounding returns: later tasks succeed faster despite being more complex.
 
+### Session 12: 3D Pyramid with 14 Orange Blocks (9-4-1)
+
+**Goal:** Build a 3D pyramid on the cargo pallet using orange blocks: 9 blocks on the bottom layer (3×3), 4 on the second layer (2×2), 1 on top. The previous code placed 6 orange blocks in a flat pyramid shape.
+
+**Attempt 1: Reused old spacing parameter — all blocks knocked away**
+
+Inherited `PQ_SPACING=150mm` and `PQ_HEIGHT=100mm` from the previous flat pyramid code and naively extended the pattern to 14 blocks. The program appeared to run (box_count reached 11), but monitoring revealed critical failures:
+
+1. **Blocks were pushed off the pallet.** Every time the robot placed a new block, it collided with already-placed blocks and knocked them away. Some blocks flew meters away (one was found at y=31m in the scene).
+2. **Monitoring was too slow.** The AI only checked every 10+ seconds and failed to catch the cascade of failures early — by the time the first screenshot was analyzed, 3 blocks were already misplaced.
+3. **Scene object tracking was misleading.** Placed blocks didn't appear in `get_scene_objects` queries (they become physics-only objects), so the AI couldn't programmatically detect that blocks were missing from the pallet. It relied on visual screenshots but misread them.
+
+The human operator stopped the experiment and identified the root cause: the AI didn't know the actual physical dimensions of the orange blocks.
+
+**Attempt 2: Trying to measure block dimensions — no API available**
+
+The AI attempted to measure block size indirectly:
+- Stacked two blocks on the conveyor → z difference = 100mm → confirmed **height = 100mm**
+- Compared block position to pallet position → estimated width, but imprecise
+- Searched the DEVELOPMENT_LOG for documented dimensions → found height (100mm) confirmed, but **width was never explicitly recorded**
+
+The AI could not determine width precisely because the `get_scene_objects` MCP tool only returned position and rotation — not object dimensions.
+
+**Feature addition: BoundingBox query in the MCP add-in**
+
+Added `GetBoundingBox(true)` support to the C# add-in's scene object query. This required:
+- Adding a `BoundingBoxData` class to the response schema
+- Calling `GraphicComponent.GetBoundingBox(true)` for each scene object
+- Returning `sizeX`, `sizeY`, `sizeZ` (in meters) alongside position data
+- Three rounds of RobotStudio restart + DLL deployment to get the change working (RobotStudio locks the DLL in memory, requiring full close/reopen for each iteration)
+
+The first test revealed that the MCP server (TypeScript) also needed to be restarted to pick up the new response format. Direct `curl` to the add-in HTTP endpoint (`localhost:8080/scene/objects`) confirmed the data was available before the MCP layer was updated.
+
+**Measurement result:** `Caja_pq_2` returned `sizeX=0.2, sizeY=0.2, sizeZ=0.1` → **Orange block = 200mm × 200mm × 100mm.**
+
+This explained everything: with `PQ_SPACING=150mm` and blocks 200mm wide, every placed block overlapped the previous one by 50mm, physically pushing it away.
+
+**Attempt 3: Corrected spacing — 3D pyramid built successfully**
+
+Changes:
+- `PQ_SPACING`: 150 → **210mm** (200mm block + 10mm clearance gap)
+- `release_z`: `z_off + PQ_HEIGHT + 40` (using the validated +40mm release offset from Session 7)
+
+The program executed all 14 blocks without a single collision:
+- **Layer 1 (3×3):** 9 blocks placed in a neat grid, all stable
+- **Layer 2 (2×2):** 4 blocks placed centered on the first layer, no shifts
+- **Layer 3 (1×1):** Top block placed centered, pyramid complete
+
+No blocks fell, no blocks were knocked away, no manual intervention required.
+
+**Experiment metrics:**
+
+| Metric | Value |
+|--------|-------|
+| Attempts to success | **3** (2 failures + 1 success) |
+| Root cause of failures | Unknown block width (200mm) vs assumed spacing (150mm) |
+| New MCP feature added | `GetBoundingBox` — object dimension query |
+| Total blocks placed | 14 (9+4+1) |
+| Blocks fallen/displaced | 0 (in final attempt) |
+| RS restart cycles for feature | 3 (DLL locked by RS process) |
+
+**Key lessons:**
+
+1. **Never assume object dimensions.** The AI inherited `PQ_SPACING=150` without verifying whether it was correct for the actual block geometry. Block height (100mm) was documented, but width (200mm) was not — and the assumption that small blocks were 100mm cubes was wrong.
+2. **Missing observability caused cascading failure.** Without a dimension query tool, the AI had no way to discover the mismatch before running the experiment. The MCP tool gap (no bounding box) directly caused the first two failed attempts.
+3. **Monitoring must be fast and programmatic.** Screenshot-based monitoring every 10s was too slow and too subjective to catch rapid failure cascades. Future experiments should use position-based validation at higher frequency.
+4. **DLL deployment is still the biggest friction.** Each add-in change requires: edit → build → close RobotStudio → admin-copy DLL → reopen RobotStudio → reload station → retest. Three rounds of this for one feature addition consumed more time than writing the code.
+
 ---
 
 ## Lessons Learned

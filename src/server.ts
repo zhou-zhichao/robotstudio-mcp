@@ -192,6 +192,14 @@ interface EulerAnglesData {
   rz: number;
 }
 
+interface BoundingBoxData {
+  min: PositionData;
+  max: PositionData;
+  sizeX: number;
+  sizeY: number;
+  sizeZ: number;
+}
+
 interface SceneObjectData {
   name: string;
   typeName: string;
@@ -200,6 +208,7 @@ interface SceneObjectData {
   position?: PositionData;
   globalPosition?: PositionData;
   eulerAngles?: EulerAnglesData;
+  boundingBox?: BoundingBoxData;
   children?: SceneObjectData[];
 }
 
@@ -218,6 +227,7 @@ interface ScreenshotResponse {
   height: number;
   mimeType: string;
   timestamp: string;
+  savedPath?: string;
 }
 
 /**
@@ -487,6 +497,11 @@ function createServer(): Server {
               type: "number",
               description:
                 "Image height in pixels (default 720, max 2160).",
+            },
+            savePath: {
+              type: "string",
+              description:
+                "Optional absolute file path to save the screenshot as PNG (e.g. 'C:/screenshots/img001.png'). Directory is created if needed. When omitted, the image is only returned inline without saving to disk.",
             },
           },
           required: [],
@@ -923,11 +938,13 @@ function createServer(): Server {
         const screenshotArgs = args as {
           width?: number;
           height?: number;
+          savePath?: string;
         };
 
-        const body: Record<string, number> = {};
+        const body: Record<string, unknown> = {};
         if (screenshotArgs?.width) body.width = screenshotArgs.width;
         if (screenshotArgs?.height) body.height = screenshotArgs.height;
+        if (screenshotArgs?.savePath) body.savePath = screenshotArgs.savePath;
 
         const screenshotResponse =
           await fetchFromRobotStudio<ScreenshotResponse>(
@@ -939,19 +956,25 @@ function createServer(): Server {
             20000 // 20s timeout — screenshot may take time on UI thread
           );
 
-        return {
-          content: [
-            {
-              type: "image",
-              data: screenshotResponse.imageBase64,
-              mimeType: screenshotResponse.mimeType,
-            },
-            {
-              type: "text",
-              text: `${screenshotResponse.width}x${screenshotResponse.height}`,
-            },
-          ],
-        };
+        const contentParts: Array<{ type: string; data?: string; mimeType?: string; text?: string }> = [
+          {
+            type: "image",
+            data: screenshotResponse.imageBase64,
+            mimeType: screenshotResponse.mimeType,
+          },
+          {
+            type: "text",
+            text: `${screenshotResponse.width}x${screenshotResponse.height}`,
+          },
+        ];
+        if (screenshotResponse.savedPath) {
+          contentParts.push({
+            type: "text",
+            text: `Saved to: ${screenshotResponse.savedPath}`,
+          });
+        }
+
+        return { content: contentParts };
       }
 
       case "read_rapid_variable": {
@@ -1057,6 +1080,9 @@ function createServer(): Server {
             line += ` r(${obj.eulerAngles.rx},${obj.eulerAngles.ry},${obj.eulerAngles.rz})`;
           }
           if (!obj.visible) line += " hidden";
+          if (obj.boundingBox) {
+            line += ` sz(${obj.boundingBox.sizeX},${obj.boundingBox.sizeY},${obj.boundingBox.sizeZ})`;
+          }
           sceneLines.push(line);
           if (obj.children) {
             for (const child of obj.children) {
