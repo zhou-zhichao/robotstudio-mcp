@@ -1,5 +1,13 @@
 # Volvo Demo Follow-up
 
+## Background
+
+This document is a follow-up to the demo meeting with Volvo. During the meeting, attendees included Niraj Singh Angomjambam (Volvo), Siyuan Chen, Omkar, and myself (Sam). This project is my master's thesis work — the original idea of using MCP (Model Context Protocol) to bridge AI and RobotStudio was proposed by my supervisor Siyuan Chen. Omkar and Siyuan Chen are both my thesis supervisors.
+
+After the demo, Niraj expressed interest in seeing recorded demo videos. He would like to share these videos internally at Volvo to present at an in-person meeting — if his leadership finds it compelling, there may be an opportunity for further collaboration. I will prepare and send the demo videos to Niraj via email, CC'ing Siyuan Chen and Omkar.
+
+---
+
 ## Issue During Demo: Slow Workobject Coordinate Calculation
 
 ### What happened
@@ -41,6 +49,8 @@ CC: Omkar
 ## New MCP Capabilities (March 23)
 
 ### 1. Object Dimension Query (BoundingBox API)
+
+Previously, the MCP had no way to determine the physical size of objects in the scene — the AI could only see positions and names, but not dimensions. This meant block stacking heights, placement offsets, and clearance distances all had to be hardcoded or guessed, which broke whenever the workpiece changed.
 
 `get_scene_objects` now returns each object's 3D bounding box as `sz(x, y, z)` in meters. The AI can query actual workpiece dimensions before writing placement logic — no more hardcoded assumptions.
 
