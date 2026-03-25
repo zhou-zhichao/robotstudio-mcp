@@ -1,0 +1,87 @@
+3D Orange Pyramid Experiment Log
+=================================
+Date: 2026-03-23
+Robot: IRB 1660ID4
+Operator note: No robotics background. Limited knowledge of joint kinematics and ABB conventions.
+Total experiment time: ~8 minutes (from giving the instruction to pyramid complete)
+Objective: Build a 3D pyramid with 14 orange blocks (9+4+1)
+Block size: 200x200x100mm
+Spacing: 210mm (center-to-center)
+
+Expected Layout:
+  Layer 1 (z=0): 3x3 grid, 9 blocks
+    Offsets: row*210, col*210 for row,col in {-1,0,1}
+  Layer 2 (z=100): 2x2 grid, 4 blocks
+    Offsets: (row*210)-105, (col*210)-105 for row,col in {0,1}
+  Layer 3 (z=200): 1x1 center, 1 block
+    Offset: (0, 0)
+
+WO_Place_pq origin: [522, -650, -259] (world)
+pqPlaceBase: [-500, -300, 144] (in WO_Place_pq)
+pqPlaceBase world: [22, -950, -115]
+
+Expected world positions of placed blocks (center, mm):
+  Layer 1 (z=-115):
+    Block  1: x=-188, y=-1160
+    Block  2: x=-188, y=-950
+    Block  3: x=-188, y=-740
+    Block  4: x=  22, y=-1160
+    Block  5: x=  22, y=-950
+    Block  6: x=  22, y=-740
+    Block  7: x= 232, y=-1160
+    Block  8: x= 232, y=-950
+    Block  9: x= 232, y=-740
+  Layer 2 (z=-15):
+    Block 10: x= -83, y=-1055
+    Block 11: x= -83, y=-845
+    Block 12: x= 127, y=-1055
+    Block 13: x= 127, y=-845
+  Layer 3 (z=85):
+    Block 14: x=  22, y=-950
+
+---
+Attempt 1 - RAPID v1 - SUCCESS
+Started: ~T+0s
+Code: rapid_v1.mod
+
+Monitoring Timeline:
+  T+000s: Simulation started, RAPID executing. Robot moving to pick.
+  T+005s: box_count=2. First 2 blocks on pallet at z=0.248. Spacing=210mm. OK.
+  T+010s: box_count=5. 5 blocks on pallet, 3x2 grid forming. All z=0.248. OK.
+  T+015s: box_count=7. 7 blocks, nearly full 3x3. Spacings consistent. OK.
+  T+020s: box_count=8. 8 of 9 layer-1 blocks placed. All z=0.248. OK.
+  T+025s: box_count=10. Layer 1 (9 blocks) COMPLETE. Layer 2 started.
+          Block 44: z=0.348 (correct). Block 45: z=0.378 (30mm high - settling).
+  T+030s: box_count=14. ALL BLOCKS PLACED. Block 45 settled to z=0.348.
+          RAPID execution completed (Stopped at main).
+
+Final Block Positions (scene coordinates, meters):
+  Layer 1 (z=0.248, 9 blocks):
+    35: (5.059, 1.060)  36: (5.054, 0.850)  37: (5.054, 0.640)
+    38: (4.844, 1.060)  39: (4.844, 0.850)  40: (4.844, 0.640)
+    41: (4.634, 1.060)  42: (4.634, 0.850)  43: (4.634, 0.640)
+  Layer 2 (z=0.348, 4 blocks):
+    44: (4.949, 0.955)  45: (4.949, 0.745)
+    46: (4.739, 0.955)  47: (4.739, 0.745)
+  Layer 3 (z=0.448, 1 block):
+    48: (4.844, 0.850)
+
+Verification:
+  Layer spacing (x): ~210mm between rows ✓
+  Layer spacing (y): ~210mm between cols ✓
+  Layer 2 offset: ~105mm from layer 1 grid ✓
+  Z-spacing: 100mm per layer (0.248 → 0.348 → 0.448) ✓
+  No blocks displaced during stacking ✓
+  Layer 3 centered above layer 2 ✓
+
+Result: PERFECT 3D PYRAMID (9-4-1 = 14 orange blocks)
+
+Screenshots:
+  screenshots/attempt1_t000.png - Start
+  screenshots/attempt1_t005.png - 2 blocks placed
+  screenshots/attempt1_t010.png - 5 blocks placed
+  screenshots/attempt1_t015.png - 7 blocks, layer 1 nearly done
+  screenshots/attempt1_t020.png - 8 blocks, layer 1 almost complete
+  screenshots/attempt1_t025.png - Layer 2 in progress (10 blocks)
+  screenshots/attempt1_t030.png - All 14 blocks placed, layers 2+3 visible
+  screenshots/attempt1_final.png - Final result, robot at HOME
