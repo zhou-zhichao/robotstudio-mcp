@@ -1,10 +1,17 @@
 {
-  "source_filename": "2026-09-05 21-02-19.mp4",
-  "source_start_seconds": 18.5,
-  "source_end_seconds": 48.5,
+  "source_filename": "2026-09-06 00-27-36.mp4",
+  "source_duration_seconds": 81.579,
+  "source_start_seconds": 26.5,
+  "source_end_seconds": 58.0,
   "speed_profile": "1x -> gradual 4x -> gradual 1x",
+  "speed_segments_source_seconds": {
+    "initial_1x": 1.5,
+    "ramp_up": 6.0,
+    "constant_4x": 18.0,
+    "ramp_down": 6.0
+  },
   "final_freeze_seconds": 3.0,
-  "ideal_duration_seconds": 14.1702,
+  "ideal_duration_seconds": 14.5452,
   "gif": {
     "width": 960,
     "fps": 16,
