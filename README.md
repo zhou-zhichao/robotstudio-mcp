@@ -95,7 +95,7 @@ The CLI requires only Node.js 18+, without npm installation. The MCP route below
 
 Builds now write to `artifacts/<year>` and never auto-deploy. Both scripts accept `-RobotStudioVersion 2024|2025|2026` and `-RobotStudioBin <matching-installation-Bin>`; the build script also accepts `-MSBuildPath`. Deployment checks build metadata and supports `-WhatIf`.
 
-2025 remains untested. The separate `addin/RobotStudioMcpAddin.Net10.csproj` is an **uncompiled experimental 2026 migration target**, requiring matching .NET 10 ABB assemblies and `-Experimental` on both scripts. It does not establish 2026 compatibility. See the [compatibility plan](docs/COMPATIBILITY_AND_AGENT_INTERFACES.md).
+The 2025 build configuration follows [Elias](https://github.com/eliasbitsch/abb-robotstudio-mcp) and [LiskinLabs](https://github.com/LiskinLabs/abb-robotstudio-mcp): .NET Framework 4.8, references to the selected 2025 host assemblies, and installation under `Bin/Addins`. It remains untested in this project. The separate `addin/RobotStudioMcpAddin.Net10.csproj` is an **uncompiled experimental 2026 migration target**, requiring matching .NET 10 ABB assemblies and `-Experimental` on both scripts. It does not establish 2026 compatibility. See the [compatibility plan](docs/COMPATIBILITY_AND_AGENT_INTERFACES.md).
 
 Example with explicit SDK selection (2025 remains untested):
 

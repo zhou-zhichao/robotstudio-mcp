@@ -17,23 +17,40 @@ RobotStudio 2025 and 2026 test environments are unavailable. This document separ
 
 | Version | Evidence | Project status |
 |---|---|---|
-| 2024 | Current project targets .NET Framework 4.8 and references RobotStudio 2024 assemblies. Build/deployment scripts contain machine-specific paths. | Existing implementation and historical experiment baseline. |
-| 2025 | ABB's migration guide identifies the 2025 SDK as the .NET Framework target. Elias and LiskinLabs use `net48` and RobotStudio 2025 assembly paths; LiskinLabs reports testing with a 2025 IRB 4600 virtual controller. | Proposed adaptation; no local build or runtime verification. |
+| 2024 | Current project targets .NET Framework 4.8 and defaults to RobotStudio 2024 assemblies. Build/deployment paths are configurable. | Existing implementation and historical experiment baseline. |
+| 2025 | Elias and LiskinLabs are the selected implementation references: both use `net48` and RobotStudio 2025 host assemblies. LiskinLabs reports testing with a 2025 IRB 4600 virtual controller. | Reference-based build configuration implemented; no local 2025 build or runtime verification. |
 | 2026.1+ | ABB requires .NET 10 for in-process add-ins, new SDK references, and review of removed APIs. | Requires migration; changing the installation year alone is insufficient. |
 
 Sources: [ABB migration guide](https://developercenter.robotstudio.com/api/robotstudio/articles/Introduction/DotNetMigration.html), [Elias project configuration](https://github.com/eliasbitsch/abb-robotstudio-mcp/blob/main/addin/ClaudeBridge.csproj), [LiskinLabs project](https://github.com/LiskinLabs/abb-robotstudio-mcp).
 
 RobotStudio SDK controls station geometry, views and simulation. PC SDK controls RAPID, I/O and controller state. Current PC SDK supports both .NET Framework 4.8 and .NET 10 for standalone applications, but add-ins hosted in RobotStudio 2026.1+ must target .NET 10. RobotStudio version and RobotWare/controller version are separate compatibility dimensions. See [PC SDK](https://developercenter.robotstudio.com/api/pcsdk/).
 
-## Proposed 2025 adaptation
+## 2025 adaptation based on Elias and LiskinLabs
 
-1. Replace fixed paths with explicit `RobotStudioVersion` and `RobotStudioBin` build/deployment inputs. Respect a supplied directory before attempting discovery. Search both Program Files locations and fail with an actionable message if required assemblies are absent. Do not silently choose a different year.
-2. Keep the `net48` target initially and reference the selected 2025 host assemblies. Preserve `Private=False` for ABB host assemblies. A RobotStudio add-in shares the host's PC SDK; copying an arbitrary PC SDK DLL beside the add-in is not a version-isolation solution.
-3. Use a supported modern MSBuild/Visual Studio toolchain rather than the current fixed Framework v4 compiler. Resolve repository paths relative to scripts, not `C:\Users\sam\...`.
-4. Separate build output from deployment. The current project copies into the installed add-in directory after building; remove that side effect when implementing the migration. Produce distinct versioned artifact directories and deploy only to the selected host.
-5. Keep existing HTTP routes and response shapes stable. Review controller discovery, Mastership, module export, simulation control, screenshots and UI-thread dispatch against the chosen SDK. Same framework does not prove binary or behavioral compatibility.
+Decision: use these two repositories as the implementation reference for 2025, as requested by the project owner. A local 2025 test environment is not required to record and ship this configuration; support claims remain limited to the available evidence.
 
-Likely outcome, not a guarantee: 2025 should require less work than 2026 because it retains the Framework runtime. Third-party repository reports are supporting evidence, not validation of this project's DLL.
+Reviewed snapshots: Elias `41355e0` and LiskinLabs `d969a85` (retrieved 2026-09-05).
+
+| Reference design | Application in this repository |
+|---|---|
+| Both target `net48`. | Keep the existing equivalent `.NET Framework v4.8` target for 2024/2025; .NET 10 is only for the separate 2026 target. |
+| Both reference ABB DLLs from `RobotStudio 2025/Bin` with `Private=false`. | `-RobotStudioVersion 2025` selects that installation, with an explicit `-RobotStudioBin` override and no copy-local ABB host DLLs. |
+| LiskinLabs deploys to `Bin/Addins/<addin-name>` and uses an autoload manifest. | Keep our own add-in name, existing autoload manifest and the same host-relative deployment layout. |
+| LiskinLabs uses a loopback TcpListener. | Retain our existing loopback listener on port 8080 and HTTP contract, shared by CLI and MCP. |
+| Both use modern C# tooling. | Discover Visual Studio MSBuild or accept `-MSBuildPath`; resolve repository paths relative to scripts. |
+
+Deliberate differences: preserve the current project format, pinned Newtonsoft.Json dependency and only the ABB references our implementation needs. Their extra Controllers/Environment and HTTP references serve their broader implementation; adding unused dependencies or copying their complete tool surface is unnecessary for this adaptation. Build and deployment remain separate, with artifacts under `artifacts/2025` and deployment metadata checks.
+
+```powershell
+.\build.ps1 -RobotStudioVersion 2025
+.\deploy.ps1 -RobotStudioVersion 2025 -WhatIf
+# Close RobotStudio, then install when ready:
+.\deploy.ps1 -RobotStudioVersion 2025
+```
+
+Sources: [Elias build configuration](https://github.com/eliasbitsch/abb-robotstudio-mcp/blob/41355e0/addin/ClaudeBridge.csproj), [LiskinLabs build configuration](https://github.com/LiskinLabs/abb-robotstudio-mcp/blob/d969a85/addin/ClaudeBridge.csproj), [LiskinLabs installer](https://github.com/LiskinLabs/abb-robotstudio-mcp/blob/d969a85/install-addin.ps1).
+
+Remaining evidence gap: this project's controller discovery, Mastership, module export, simulation and screenshots have not been built or exercised against a 2025 host. Reference implementations inform the design but do not prove binary or behavioral compatibility of this DLL.
 
 ## Proposed 2026 adaptation
 
