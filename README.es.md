@@ -48,6 +48,15 @@ La célula dispone de una pinza de vacío, una cinta y dos palés para experimen
 | Código RAPID y diagnóstico | `upload_rapid_module`, `get_rapid_module_source`, `list_rapid_modules`, `get_execution_errors` |
 | Variables y E/S | `read_rapid_variable`, `set_rapid_variable`, `list_rapid_variables`, `get_io_signals`, `set_io_signal` |
 | Escena e imágenes | `get_scene_objects`, `get_screenshot` |
+| Pose TCP | `get_robot_pose` |
+| Control de velocidad | `get_speed_settings`, `set_simulation_speed`, `set_speed_override` |
+| Guardar y restaurar | `save_station`, `save_rapid_program`, `list_rapid_backups`, `load_rapid_program` |
+| Trayectorias y puntos | `get_paths`, `get_path_targets`, `create_path`, `create_target`, `append_path_target` |
+| Comprobación del programa | `validate_rapid`, `check_execution_ready` |
+| Archivos del controlador | `read_controller_config`, `list_controller_files`, `read_controller_file` |
+
+
+El servidor MCP ofrece 34 herramientas. Las 18 nuevas también están disponibles mediante CLI y Skill; consulta la [referencia de parámetros y flujos](docs/EXTENDED_TOOLS.md). Las nuevas operaciones SDK compilan con RobotStudio 2024; falta validarlas dentro de la aplicación.
 
 ## Arquitectura
 
@@ -196,6 +205,10 @@ npm --prefix src run build
 - [Historial de experimentos y fallos](docs/DEVELOPMENT_LOG.md)
 - [Implementación CLI](scripts/robotstudio.mjs)
 - [Complemento C#](addin/RobotStudioAddin.cs)
+
+## Agradecimientos
+
+Gracias a [Elias Bitsch](https://github.com/eliasbitsch/abb-robotstudio-mcp) y [LiskinLabs](https://github.com/LiskinLabs/abb-robotstudio-mcp) por sus implementaciones abiertas de RobotStudio MCP. Sus herramientas de TCP, velocidad, trayectorias, gestión de programas y comprobación previa inspiraron esta ampliación, implementada en la capa C# / HTTP compartida según la documentación del SDK de ABB.
 
 ## Licencia
 

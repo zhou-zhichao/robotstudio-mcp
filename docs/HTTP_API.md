@@ -39,3 +39,28 @@ The CLI reports HTTP errors, `success:false`, malformed JSON and timeouts as fai
 - No automatic write retries are performed by the CLI. After a timeout, inspect actual state before retrying.
 - The listener uses TcpListener to avoid HTTP URL ACL registration; copying the add-in into Program Files may still require administrator rights.
 - For historical debugging notes and scenario-specific RAPID lessons, read the [development log](DEVELOPMENT_LOG.md) and [RAPID examples](RAPID_EXAMPLES.md).
+
+## Extended routes
+
+All routes below use POST with a JSON body. They require the updated add-in (`health` reports `apiVersion: 2`). See [extended tools](EXTENDED_TOOLS.md) for units, backup rules and validation limits.
+
+| Endpoint | Tool |
+|---|---|
+| `/robot/pose` | `get_robot_pose` |
+| `/speed/get` | `get_speed_settings` |
+| `/speed/simulation` | `set_simulation_speed` |
+| `/speed/override` | `set_speed_override` |
+| `/station/save` | `save_station` |
+| `/program/save` | `save_rapid_program` |
+| `/program/backups` | `list_rapid_backups` |
+| `/program/load` | `load_rapid_program` |
+| `/paths/list` | `get_paths` |
+| `/paths/targets` | `get_path_targets` |
+| `/paths/create` | `create_path` |
+| `/targets/create` | `create_target` |
+| `/paths/append` | `append_path_target` |
+| `/rapid/validate` | `validate_rapid` |
+| `/rapid/check` | `check_execution_ready` |
+| `/controller/config` | `read_controller_config` |
+| `/controller/files` | `list_controller_files` |
+| `/controller/file` | `read_controller_file` |

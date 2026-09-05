@@ -48,6 +48,15 @@ RobotStudio 2024 での録画：IRB120 の仮想コントローラーで `robots
 | RAPID ソースと診断 | `upload_rapid_module`, `get_rapid_module_source`, `list_rapid_modules`, `get_execution_errors` |
 | 変数と I/O | `read_rapid_variable`, `set_rapid_variable`, `list_rapid_variables`, `get_io_signals`, `set_io_signal` |
 | シーンと画像 | `get_scene_objects`, `get_screenshot` |
+| TCP の位置と姿勢 | `get_robot_pose` |
+| 速度制御 | `get_speed_settings`, `set_simulation_speed`, `set_speed_override` |
+| 保存と復元 | `save_station`, `save_rapid_program`, `list_rapid_backups`, `load_rapid_program` |
+| パスとターゲット | `get_paths`, `get_path_targets`, `create_path`, `create_target`, `append_path_target` |
+| プログラム検査 | `validate_rapid`, `check_execution_ready` |
+| コントローラーファイル | `read_controller_config`, `list_controller_files`, `read_controller_file` |
+
+
+MCP は34個のツールを提供します。追加した18個は CLI と Skill からも利用できます。[パラメーターと操作手順](docs/EXTENDED_TOOLS.md)を参照してください。新しい SDK 操作は RobotStudio 2024 でビルド済みですが、アプリ内での動作検証は未完了です。
 
 ## 構成
 
@@ -196,6 +205,10 @@ npm --prefix src run build
 - [失敗を含む実験記録](docs/DEVELOPMENT_LOG.md)
 - [CLI 実装](scripts/robotstudio.mjs)
 - [C# アドイン](addin/RobotStudioAddin.cs)
+
+## 謝辞
+
+RobotStudio MCP の実装を公開している [Elias Bitsch](https://github.com/eliasbitsch/abb-robotstudio-mcp) と [LiskinLabs](https://github.com/LiskinLabs/abb-robotstudio-mcp) に感謝します。TCP、速度、パス、プログラム管理、事前検査の設計を参考にし、ABB SDK の文書に基づいて MCP と CLI 共通の C# / HTTP 層に実装しました。
 
 ## ライセンス
 

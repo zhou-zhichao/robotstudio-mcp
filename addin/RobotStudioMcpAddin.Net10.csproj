@@ -10,6 +10,9 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="RobotStudioAddin.cs" />
+    <Compile Include="ExtendedTools.cs" />
+    <Compile Include="RapidPrecheck.cs" />
+    <EmbeddedResource Include="..\src\extended-tools.json"><LogicalName>RobotStudioMcpAddin.ExtendedTools.json</LogicalName></EmbeddedResource>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <Reference Include="ABB.Robotics.RobotStudio"><HintPath>$(RobotStudioBin)\ABB.Robotics.RobotStudio.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="ABB.Robotics.RobotStudio.Stations"><HintPath>$(RobotStudioBin)\ABB.Robotics.RobotStudio.Stations.dll</HintPath><Private>false</Private></Reference>

@@ -48,6 +48,15 @@ A vacuum-gripper cell with a conveyor and two pallets supports pick-and-place an
 | RAPID source and diagnostics | `upload_rapid_module`, `get_rapid_module_source`, `list_rapid_modules`, `get_execution_errors` |
 | Variables and I/O | `read_rapid_variable`, `set_rapid_variable`, `list_rapid_variables`, `get_io_signals`, `set_io_signal` |
 | Scene and images | `get_scene_objects`, `get_screenshot` |
+| TCP pose | `get_robot_pose` |
+| Speed control | `get_speed_settings`, `set_simulation_speed`, `set_speed_override` |
+| Save and restore | `save_station`, `save_rapid_program`, `list_rapid_backups`, `load_rapid_program` |
+| Paths and targets | `get_paths`, `get_path_targets`, `create_path`, `create_target`, `append_path_target` |
+| Program checks | `validate_rapid`, `check_execution_ready` |
+| Controller files | `read_controller_config`, `list_controller_files`, `read_controller_file` |
+
+
+The MCP server now exposes 34 tools. The 18 additions are also available through the CLI and Skill; see the [parameter and workflow reference](docs/EXTENDED_TOOLS.md). New SDK operations compile against RobotStudio 2024; in-host validation is pending.
 
 ## Architecture
 
@@ -196,6 +205,10 @@ npm --prefix src run build
 - [Experiment history, including failures](docs/DEVELOPMENT_LOG.md)
 - [CLI implementation](scripts/robotstudio.mjs)
 - [C# add-in](addin/RobotStudioAddin.cs)
+
+## Acknowledgments
+
+Thanks to [Elias Bitsch](https://github.com/eliasbitsch/abb-robotstudio-mcp) and [LiskinLabs](https://github.com/LiskinLabs/abb-robotstudio-mcp) for their open-source RobotStudio MCP implementations. Their TCP, speed, station/path, program-management and precheck tools informed this extension. Our implementation uses the shared C# / HTTP layer for both MCP and CLI, with ABB SDK documentation as the API reference.
 
 ## License
 

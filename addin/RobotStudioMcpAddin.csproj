@@ -79,6 +79,9 @@
 
   <ItemGroup>
     <Compile Include="RobotStudioAddin.cs" />
+    <Compile Include="ExtendedTools.cs" />
+    <Compile Include="RapidPrecheck.cs" />
+    <EmbeddedResource Include="..\src\extended-tools.json"><LogicalName>RobotStudioMcpAddin.ExtendedTools.json</LogicalName></EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

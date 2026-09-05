@@ -20,3 +20,16 @@ Execute in observable stages, checking RAPID status, variables/I/O and new event
 Simulation reset currently includes demo-specific dynamic box cleanup. Do not assume it resets arbitrary stations or restores deleted modules. Stop/start/reset operations should follow the user's requested task; this Skill does not authorize unrelated execution or real-controller use.
 
 RobotStudio 2024 is the existing baseline. 2025 and 2026 remain unverified; see [compatibility plan](../../../docs/COMPATIBILITY_AND_AGENT_INTERFACES.md).
+
+## Extended tools (API version 2)
+
+Use `health` to verify `apiVersion: 2` before calling the 18 extended tools. New tool definitions live in `src/extended-tools.json`; all are shared by CLI and MCP. SDK calls compile against 2024 but require in-host verification; never present compilation as a completed robot test.
+
+- Use `get_robot_pose` for live TCP XYZ in millimeters and quaternion; specify the frame and mechanical unit when ambiguous. Existing scene inspection still returns SDK meters.
+- Before a program change, stop execution and use `save_rapid_program`; keep the returned backupId. `load_rapid_program` only restores a backup for the same controller/task and creates a recovery backup before attempting replacement. Failed restores are not automatically rolled back. Read the failure's recovery backup ID before doing anything else.
+- Use `validate_rapid --code-file program.mod` for a limited lexical/structural check. Before starting a modified program, use `check_execution_ready` for current SDK compiler errors and controller prerequisites. It does not prove collision freedom or reachability; do not use historical event-log errors as current compiler diagnostics.
+- Record `get_speed_settings` before changing `set_simulation_speed` or `set_speed_override`, and restore the prior setting after temporary debug changes.
+- `create_target` uses mm and Euler XYZ degrees in the selected work object. New target configurations remain unverified. `create_path` and `append_path_target` change the station model with Undo support; they do not synchronize or execute RAPID. Do not claim that a station path exists in the controller until explicitly synchronized and checked.
+- File tools are read-only and scoped to virtual-controller HOME; config reads allow only SYS/EIO/SIO/MOC.cfg. They do not provide arbitrary host file access or configuration writes.
+
+Exact workflows and limitations: [extended tools](../../../docs/EXTENDED_TOOLS.md).

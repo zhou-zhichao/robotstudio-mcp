@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFile, writeFile, mkdir, lstat } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -36,6 +37,15 @@ export const commands = {
   set_io_signal: route('/io/signals/set', 'POST', { signalName: text, value: { type: 'number' } }, ['signalName', 'value']),
   get_scene_objects: route('/scene/objects', 'POST', { nameFilter: text, includeChildren: bool }),
 };
+
+const extendedTools = JSON.parse(readFileSync(new URL('../src/extended-tools.json', import.meta.url), 'utf8'));
+for (const tool of extendedTools) {
+  commands[tool.name] = route(tool.path, tool.method,
+    Object.fromEntries(Object.entries(tool.inputSchema.properties).map(([key, rule]) => [key, {
+      type: rule.type === 'integer' ? 'number' : rule.type,
+      integer: rule.type === 'integer', min: rule.minimum, max: rule.maximum, values: rule.enum,
+    }])), tool.inputSchema.required, tool.timeout);
+}
 
 export async function call(command, params = {}, options = {}) {
   const spec = Object.hasOwn(commands, command) ? commands[command] : null;
@@ -105,7 +115,7 @@ export async function main(args) {
     options[key] = rest[i + 1];
   }
   if (command === 'get_screenshot' && !options['--output']) throw new Error('Screenshot requires --output file.png.');
-  if (options['--code-file'] && command !== 'upload_rapid_module') throw new Error('--code-file is only valid for upload_rapid_module.');
+  if (options['--code-file'] && !['upload_rapid_module', 'validate_rapid'].includes(command)) throw new Error('--code-file is only valid for upload_rapid_module or validate_rapid.');
   if (options['--output']) {
     try {
       await lstat(resolve(options['--output']));

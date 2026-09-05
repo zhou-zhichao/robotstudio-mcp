@@ -48,6 +48,15 @@ slides 对比了 IRB120 与 IRB2400 上的“34”绘制任务。这个场景用
 | RAPID 源码与诊断 | `upload_rapid_module`, `get_rapid_module_source`, `list_rapid_modules`, `get_execution_errors` |
 | 变量与 I/O | `read_rapid_variable`, `set_rapid_variable`, `list_rapid_variables`, `get_io_signals`, `set_io_signal` |
 | 场景与图像 | `get_scene_objects`, `get_screenshot` |
+| TCP 位姿 | `get_robot_pose` |
+| 速度控制 | `get_speed_settings`, `set_simulation_speed`, `set_speed_override` |
+| 保存与恢复 | `save_station`, `save_rapid_program`, `list_rapid_backups`, `load_rapid_program` |
+| 路径与目标点 | `get_paths`, `get_path_targets`, `create_path`, `create_target`, `append_path_target` |
+| 程序检查 | `validate_rapid`, `check_execution_ready` |
+| 控制器文件 | `read_controller_config`, `list_controller_files`, `read_controller_file` |
+
+
+MCP 现提供 34 个工具，新增的 18 个工具也可通过 CLI 和 Skill 使用。参数与操作顺序见[扩展工具说明](docs/EXTENDED_TOOLS.md)。新增 SDK 操作已通过 RobotStudio 2024 编译，宿主内运行验证仍待完成。
 
 ## 架构
 
@@ -196,6 +205,10 @@ npm --prefix src run build
 - [包含失败过程的实验记录](docs/DEVELOPMENT_LOG.md)
 - [CLI 实现](scripts/robotstudio.mjs)
 - [C# 插件](addin/RobotStudioAddin.cs)
+
+## 鸣谢
+
+感谢 [Elias Bitsch](https://github.com/eliasbitsch/abb-robotstudio-mcp) 和 [LiskinLabs](https://github.com/LiskinLabs/abb-robotstudio-mcp) 公开 RobotStudio MCP 实现。本次扩展参考了它们的 TCP、速度、工作站与路径、程序管理和预检查工具设计，并依据 ABB SDK 文档实现于共用的 C#／HTTP 层，供 MCP 与 CLI 使用。
 
 ## 许可证
 

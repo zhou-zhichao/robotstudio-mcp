@@ -1,0 +1,433 @@
+[
+  {
+    "name": "get_robot_pose",
+    "path": "/robot/pose",
+    "method": "POST",
+    "timeout": 15000,
+    "description": "Read live TCP XYZ in mm and quaternion in the selected frame, plus active tool/work object.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "mechanicalUnit": {
+          "type": "string"
+        },
+        "frame": {
+          "type": "string",
+          "enum": [
+            "world",
+            "base",
+            "workobject",
+            "tool"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "get_speed_settings",
+    "path": "/speed/get",
+    "method": "POST",
+    "timeout": 15000,
+    "description": "Read simulation multiplier and controller speed override.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "set_simulation_speed",
+    "path": "/speed/simulation",
+    "method": "POST",
+    "timeout": 15000,
+    "description": "Set virtual simulation time multiplier; does not change RAPID speeddata.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "multiplier": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 10
+        }
+      },
+      "required": [
+        "multiplier"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "set_speed_override",
+    "path": "/speed/override",
+    "method": "POST",
+    "timeout": 15000,
+    "description": "Set virtual controller speed override percentage.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "percent"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "save_station",
+    "path": "/station/save",
+    "method": "POST",
+    "timeout": 90000,
+    "description": "Save the current named station; requires a saved station path.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "save_rapid_program",
+    "path": "/program/save",
+    "method": "POST",
+    "timeout": 90000,
+    "description": "Save a task program to a unique local backup; returns a backupId.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "taskName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "list_rapid_backups",
+    "path": "/program/backups",
+    "method": "POST",
+    "timeout": 15000,
+    "description": "List completed backups for the active virtual controller and task.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "taskName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "load_rapid_program",
+    "path": "/program/load",
+    "method": "POST",
+    "timeout": 90000,
+    "description": "Restore a saved backup for the same controller/task while stopped. Automatically backs up the current program first; does not start execution.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "taskName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        },
+        "backupId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "backupId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "get_paths",
+    "path": "/paths/list",
+    "method": "POST",
+    "timeout": 15000,
+    "description": "List station paths for a task, separate from controller RAPID.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "taskName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "get_path_targets",
+    "path": "/paths/targets",
+    "method": "POST",
+    "timeout": 15000,
+    "description": "Read path instructions, target coordinates and work objects.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "taskName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        },
+        "pathName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        }
+      },
+      "required": [
+        "pathName"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "create_path",
+    "path": "/paths/create",
+    "method": "POST",
+    "timeout": 15000,
+    "description": "Create an empty, undoable station path. No implicit synchronization or execution.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "taskName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        },
+        "pathName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        },
+        "moduleName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        }
+      },
+      "required": [
+        "pathName"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "create_target",
+    "path": "/targets/create",
+    "method": "POST",
+    "timeout": 15000,
+    "description": "Create a visible station target. Position is mm in the chosen work object, Euler XYZ angles are degrees. Robot configuration/reachability remains unverified.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "taskName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        },
+        "targetName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        },
+        "workObject": {
+          "type": "string",
+          "description": "RAPID identifier."
+        },
+        "xMm": {
+          "type": "number",
+          "minimum": -100000,
+          "maximum": 100000
+        },
+        "yMm": {
+          "type": "number",
+          "minimum": -100000,
+          "maximum": 100000
+        },
+        "zMm": {
+          "type": "number",
+          "minimum": -100000,
+          "maximum": 100000
+        },
+        "rxDeg": {
+          "type": "number",
+          "minimum": -360,
+          "maximum": 360
+        },
+        "ryDeg": {
+          "type": "number",
+          "minimum": -360,
+          "maximum": 360
+        },
+        "rzDeg": {
+          "type": "number",
+          "minimum": -360,
+          "maximum": 360
+        }
+      },
+      "required": [
+        "targetName",
+        "xMm",
+        "yMm",
+        "zMm"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "append_path_target",
+    "path": "/paths/append",
+    "method": "POST",
+    "timeout": 15000,
+    "description": "Append a MoveL/MoveJ/MoveC station instruction using existing targets, tool and work object. No controller synchronization.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "taskName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        },
+        "pathName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        },
+        "targetName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        },
+        "viaTargetName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        },
+        "toolName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        },
+        "workObject": {
+          "type": "string",
+          "description": "RAPID identifier."
+        },
+        "motion": {
+          "type": "string",
+          "enum": [
+            "linear",
+            "joint",
+            "circular"
+          ]
+        }
+      },
+      "required": [
+        "pathName",
+        "targetName"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "validate_rapid",
+    "path": "/rapid/validate",
+    "method": "POST",
+    "timeout": 15000,
+    "description": "Lexical/structural RAPID precheck only; not a compiler, reachability or collision check.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "check_execution_ready",
+    "path": "/rapid/check",
+    "method": "POST",
+    "timeout": 30000,
+    "description": "Check current controller/task prerequisites and SDK CheckProgram diagnostics while stopped. Does not inspect historical logs or assert physical safety.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "taskName": {
+          "type": "string",
+          "description": "RAPID identifier."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "read_controller_config",
+    "path": "/controller/config",
+    "method": "POST",
+    "timeout": 15000,
+    "description": "Read SYS.cfg, EIO.cfg, SIO.cfg or MOC.cfg from the virtual controller system directory.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "fileName": {
+          "type": "string",
+          "enum": [
+            "SYS.cfg",
+            "EIO.cfg",
+            "SIO.cfg",
+            "MOC.cfg"
+          ]
+        }
+      },
+      "required": [
+        "fileName"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "list_controller_files",
+    "path": "/controller/files",
+    "method": "POST",
+    "timeout": 15000,
+    "description": "List up to 500 entries below the virtual controller HOME; no arbitrary host paths.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "relativePath": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "read_controller_file",
+    "path": "/controller/file",
+    "method": "POST",
+    "timeout": 15000,
+    "description": "Read a text file under virtual controller HOME, limited to 1 MiB. Absolute paths, traversal and links are rejected.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "relativePath": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "relativePath"
+      ],
+      "additionalProperties": false
+    }
+  }
+]

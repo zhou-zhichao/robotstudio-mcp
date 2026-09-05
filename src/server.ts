@@ -9,8 +9,12 @@ import {
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
 
+import { createRequire } from "node:module";
+import type extendedToolCatalog from "./extended-tools.json";
+const extendedTools: typeof extendedToolCatalog = createRequire(import.meta.url)("./extended-tools.json");
+
 // Configuration
-const ROBOTSTUDIO_API_BASE = "http://localhost:8080";
+const ROBOTSTUDIO_API_BASE = process.env.ROBOTSTUDIO_API_BASE ?? "http://localhost:8080";
 const REQUEST_TIMEOUT_MS = 10000;
 
 // Types for RobotStudio API responses
@@ -282,7 +286,7 @@ async function fetchFromRobotStudio<T>(
       if (error.name === "AbortError") {
         throw new McpError(
           ErrorCode.InternalError,
-          "Request to RobotStudio timed out. The application may be unresponsive."
+          "Request timed out; outcome unknown. Inspect state before retrying a write."
         );
       }
 
@@ -322,6 +326,7 @@ function createServer(): Server {
   // Register tool listing handler
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
+      ...extendedTools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema: { ...inputSchema, type: "object" as const } })),
       {
         name: "get_robot_joints",
         description:
@@ -655,6 +660,31 @@ function createServer(): Server {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
+    const extended = extendedTools.find(tool => tool.name === name);
+    if (extended) {
+      const parameters = args ?? {};
+      const schema = extended.inputSchema as {
+        required: string[];
+        properties: Record<string, { type: string; enum?: unknown[]; minimum?: number; maximum?: number } | undefined>;
+      };
+      for (const key of schema.required) {
+        if (!Object.hasOwn(parameters, key)) throw new McpError(ErrorCode.InvalidParams, `Missing parameter: ${key}`);
+      }
+      for (const [key, value] of Object.entries(parameters)) {
+        const rule = Object.hasOwn(schema.properties, key) ? schema.properties[key] : undefined;
+        if (!rule || (rule.type === "string" && (typeof value !== "string" || !value.trim())) ||
+          (["integer", "number"].includes(rule.type) && (typeof value !== "number" || !Number.isFinite(value) ||
+            (rule.type === "integer" && !Number.isInteger(value)) ||
+            (rule.minimum !== undefined && value < rule.minimum) || (rule.maximum !== undefined && value > rule.maximum))) ||
+          (rule.enum && !rule.enum.includes(value))) {
+          throw new McpError(ErrorCode.InvalidParams, `Invalid parameter: ${key}`);
+        }
+      }
+      const response = await fetchFromRobotStudio<Record<string, unknown>>(
+        extended.path, { method: "POST", body: JSON.stringify(args ?? {}) }, extended.timeout
+      );
+      return { isError: response.success === false, content: [{ type: "text", text: JSON.stringify(response, null, 2) }] };
+    }
     switch (name) {
       case "get_robot_joints": {
         const response = await fetchFromRobotStudio<JointResponse>("/joints");

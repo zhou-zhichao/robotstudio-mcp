@@ -21,7 +21,7 @@ using Newtonsoft.Json;
 
 namespace RobotStudioMcpAddin
 {
-    public class Addin
+    public partial class Addin
     {
         private static TcpListener _tcpListener;
         private static CancellationTokenSource _cts;
@@ -187,10 +187,12 @@ namespace RobotStudioMcpAddin
                     string responseJson;
                     int statusCode = 200;
 
+                    lock (ExtendedLock)
+                    {
                     switch (path)
                     {
                         case "/health":
-                            responseJson = JsonConvert.SerializeObject(new { status = "ok", timestamp = DateTime.UtcNow.ToString("o") });
+                            responseJson = JsonConvert.SerializeObject(new { status = "ok", apiVersion = 2, extendedTools = ExtendedPaths.Count, timestamp = DateTime.UtcNow.ToString("o") });
                             break;
                         case "/joints":
                             if (method != "GET") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
@@ -257,6 +259,12 @@ namespace RobotStudioMcpAddin
                             responseJson = HandleListVariables(body, out statusCode);
                             break;
                         default:
+                            if (ExtendedPaths.Contains(path))
+                            {
+                                if (method != "POST") { SendResponse(stream, 405, "{\"error\":\"Method Not Allowed\"}"); return; }
+                                responseJson = HandleExtended(path, body, out statusCode);
+                                break;
+                            }
                             statusCode = 404;
                             responseJson = JsonConvert.SerializeObject(new ErrorResponse
                             {
@@ -267,6 +275,7 @@ namespace RobotStudioMcpAddin
                             break;
                     }
 
+                    }
                     SendResponse(stream, statusCode, responseJson);
                 }
             }
