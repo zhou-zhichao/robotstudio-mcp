@@ -39,6 +39,20 @@ RobotStudio 2024 での録画：IRB120 の仮想コントローラーで `robots
 
 <!-- END EXAMPLE SCENES -->
 
+<!-- BEGIN COMMUNITY SCENARIOS -->
+
+## コミュニティのシナリオと謝辞
+
+外部のワークステーションを紹介します。パッケージ、バージョン情報、筆跡表示の仕組みは[シナリオ一覧](docs/COMMUNITY_SCENES.md)をご覧ください。本ブリッジでの動作は未検証です。各作者に感謝します。
+
+- **2台のロボットによる仕分けライン** — [rparak/ABB-RobotStudio-SortingProductionLine](https://github.com/rparak/ABB-RobotStudio-SortingProductionLine).
+- **YuMi 双腕によるハノイの塔** — [rparak/ABB-RobotStudio-YUMI-Tower-of_Hanoi](https://github.com/rparak/ABB-RobotStudio-YUMI-Tower-of_Hanoi).
+- **IRB2600 2台による組立・溶接シミュレーション** — [jorgeserranoo/abb-irb2600-robotic-assembly-cell](https://github.com/jorgeserranoo/abb-irb2600-robotic-assembly-cell).
+- **IRB360 FlexPicker による仕分け・積み重ね** — [andyzaur/ConveyorBelt-FlexPicker](https://github.com/andyzaur/ConveyorBelt-FlexPicker).
+- **Hershey 筆記体の描画** — [FLo-ABB/Hershey-ABB-Robot-Handwriting](https://github.com/FLo-ABB/Hershey-ABB-Robot-Handwriting).
+
+<!-- END COMMUNITY SCENARIOS -->
+
 ## 主な機能
 
 | 分類 | コマンド |

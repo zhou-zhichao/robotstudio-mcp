@@ -39,6 +39,20 @@ slides 对比了 IRB120 与 IRB2400 上的“34”绘制任务。这个场景用
 
 <!-- END EXAMPLE SCENES -->
 
+<!-- BEGIN COMMUNITY SCENARIOS -->
+
+## 社区场景与鸣谢
+
+以下收录可供探索的第三方工作站；场景包链接、版本说明和书写描线原理见[场景目录](docs/COMMUNITY_SCENES.md)。这些场景尚未通过本项目验证。感谢原作者：
+
+- **双机器人分拣生产线** — [rparak/ABB-RobotStudio-SortingProductionLine](https://github.com/rparak/ABB-RobotStudio-SortingProductionLine).
+- **YuMi 双臂汉诺塔** — [rparak/ABB-RobotStudio-YUMI-Tower-of_Hanoi](https://github.com/rparak/ABB-RobotStudio-YUMI-Tower-of_Hanoi).
+- **双 IRB2600 装配与焊接模拟** — [jorgeserranoo/abb-irb2600-robotic-assembly-cell](https://github.com/jorgeserranoo/abb-irb2600-robotic-assembly-cell).
+- **IRB360 FlexPicker 分类堆叠** — [andyzaur/ConveyorBelt-FlexPicker](https://github.com/andyzaur/ConveyorBelt-FlexPicker).
+- **Hershey 连笔书写** — [FLo-ABB/Hershey-ABB-Robot-Handwriting](https://github.com/FLo-ABB/Hershey-ABB-Robot-Handwriting).
+
+<!-- END COMMUNITY SCENARIOS -->
+
 ## 可以做什么
 
 | 类别 | 命令 |

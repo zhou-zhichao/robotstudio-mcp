@@ -39,6 +39,20 @@ La célula dispone de una pinza de vacío, una cinta y dos palés para experimen
 
 <!-- END EXAMPLE SCENES -->
 
+<!-- BEGIN COMMUNITY SCENARIOS -->
+
+## Escenarios de la comunidad y agradecimientos
+
+Estaciones de terceros para explorar. El [catálogo](docs/COMMUNITY_SCENES.md) incluye paquetes, versiones y detalles del trazado de escritura. Estas estaciones no se han probado con este puente. Gracias a sus autores:
+
+- **Línea de clasificación con dos robots** — [rparak/ABB-RobotStudio-SortingProductionLine](https://github.com/rparak/ABB-RobotStudio-SortingProductionLine).
+- **Torres de Hanói con YuMi** — [rparak/ABB-RobotStudio-YUMI-Tower-of_Hanoi](https://github.com/rparak/ABB-RobotStudio-YUMI-Tower-of_Hanoi).
+- **Montaje y soldadura simulada con dos IRB2600** — [jorgeserranoo/abb-irb2600-robotic-assembly-cell](https://github.com/jorgeserranoo/abb-irb2600-robotic-assembly-cell).
+- **Clasificación y apilado con IRB360 FlexPicker** — [andyzaur/ConveyorBelt-FlexPicker](https://github.com/andyzaur/ConveyorBelt-FlexPicker).
+- **Escritura cursiva Hershey** — [FLo-ABB/Hershey-ABB-Robot-Handwriting](https://github.com/FLo-ABB/Hershey-ABB-Robot-Handwriting).
+
+<!-- END COMMUNITY SCENARIOS -->
+
 ## Funciones
 
 | Área | Comandos |

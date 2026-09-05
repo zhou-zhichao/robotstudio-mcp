@@ -39,6 +39,20 @@ RobotStudio 2024 녹화: IRB120 가상 컨트롤러로 `robotstudio-mcp`를 그�
 
 <!-- END EXAMPLE SCENES -->
 
+<!-- BEGIN COMMUNITY SCENARIOS -->
+
+## 커뮤니티 시나리오 및 감사의 글
+
+살펴볼 수 있는 외부 워크스테이션입니다. 패키지, 버전 정보, 필적 표시 원리는 [시나리오 목록](docs/COMMUNITY_SCENES.md)에 정리했습니다. 이 브리지에서의 동작은 아직 검증하지 않았습니다. 원작자에게 감사드립니다.
+
+- **두 로봇을 이용한 분류 생산라인** — [rparak/ABB-RobotStudio-SortingProductionLine](https://github.com/rparak/ABB-RobotStudio-SortingProductionLine).
+- **YuMi 양팔 하노이의 탑** — [rparak/ABB-RobotStudio-YUMI-Tower-of_Hanoi](https://github.com/rparak/ABB-RobotStudio-YUMI-Tower-of_Hanoi).
+- **IRB2600 두 대의 조립 및 용접 시뮬레이션** — [jorgeserranoo/abb-irb2600-robotic-assembly-cell](https://github.com/jorgeserranoo/abb-irb2600-robotic-assembly-cell).
+- **IRB360 FlexPicker 분류 및 적재** — [andyzaur/ConveyorBelt-FlexPicker](https://github.com/andyzaur/ConveyorBelt-FlexPicker).
+- **Hershey 필기체 쓰기** — [FLo-ABB/Hershey-ABB-Robot-Handwriting](https://github.com/FLo-ABB/Hershey-ABB-Robot-Handwriting).
+
+<!-- END COMMUNITY SCENARIOS -->
+
 ## 주요 기능
 
 | 분류 | 명령 |

@@ -39,6 +39,20 @@ Die Zelle besitzt einen Vakuumgreifer, ein Förderband und zwei Paletten für Gr
 
 <!-- END EXAMPLE SCENES -->
 
+<!-- BEGIN COMMUNITY SCENARIOS -->
+
+## Community-Szenarien und Danksagung
+
+Externe Stationen zum Erkunden. Der [Katalog](docs/COMMUNITY_SCENES.md) enthält Pakete, Versionshinweise und die Funktionsweise der Schreibspur. Diese Stationen wurden noch nicht mit dieser Bridge getestet. Vielen Dank an die Autoren:
+
+- **Sortierlinie mit zwei Robotern** — [rparak/ABB-RobotStudio-SortingProductionLine](https://github.com/rparak/ABB-RobotStudio-SortingProductionLine).
+- **Turm von Hanoi mit YuMi** — [rparak/ABB-RobotStudio-YUMI-Tower-of_Hanoi](https://github.com/rparak/ABB-RobotStudio-YUMI-Tower-of_Hanoi).
+- **Montage und simuliertes Schweißen mit zwei IRB2600** — [jorgeserranoo/abb-irb2600-robotic-assembly-cell](https://github.com/jorgeserranoo/abb-irb2600-robotic-assembly-cell).
+- **Sortieren und Stapeln mit IRB360 FlexPicker** — [andyzaur/ConveyorBelt-FlexPicker](https://github.com/andyzaur/ConveyorBelt-FlexPicker).
+- **Hershey-Schreibschrift** — [FLo-ABB/Hershey-ABB-Robot-Handwriting](https://github.com/FLo-ABB/Hershey-ABB-Robot-Handwriting).
+
+<!-- END COMMUNITY SCENARIOS -->
+
 ## Funktionen
 
 | Bereich | Befehle |

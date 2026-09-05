@@ -39,6 +39,20 @@ A vacuum-gripper cell with a conveyor and two pallets supports pick-and-place an
 
 <!-- END EXAMPLE SCENES -->
 
+<!-- BEGIN COMMUNITY SCENARIOS -->
+
+## Community scenarios and credits
+
+Third-party stations to explore; package links, version notes and handwriting trace details are in the [scenario catalog](docs/COMMUNITY_SCENES.md). These stations have not been tested with this bridge. Thanks to the original authors:
+
+- **Two-robot sorting production line** — [rparak/ABB-RobotStudio-SortingProductionLine](https://github.com/rparak/ABB-RobotStudio-SortingProductionLine).
+- **YuMi dual-arm Tower of Hanoi** — [rparak/ABB-RobotStudio-YUMI-Tower-of_Hanoi](https://github.com/rparak/ABB-RobotStudio-YUMI-Tower-of_Hanoi).
+- **Dual IRB2600 assembly and simulated welding** — [jorgeserranoo/abb-irb2600-robotic-assembly-cell](https://github.com/jorgeserranoo/abb-irb2600-robotic-assembly-cell).
+- **IRB360 FlexPicker sorting and stacking** — [andyzaur/ConveyorBelt-FlexPicker](https://github.com/andyzaur/ConveyorBelt-FlexPicker).
+- **Hershey cursive handwriting** — [FLo-ABB/Hershey-ABB-Robot-Handwriting](https://github.com/FLo-ABB/Hershey-ABB-Robot-Handwriting).
+
+<!-- END COMMUNITY SCENARIOS -->
+
 ## What you can do
 
 | Area | Commands |

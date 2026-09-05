@@ -39,6 +39,20 @@ La cellule comporte une pince à vide, un convoyeur et deux palettes pour les ex
 
 <!-- END EXAMPLE SCENES -->
 
+<!-- BEGIN COMMUNITY SCENARIOS -->
+
+## Scénarios communautaires et remerciements
+
+Stations tierces à explorer. Le [catalogue](docs/COMMUNITY_SCENES.md) contient les fichiers, les versions et le fonctionnement du tracé d’écriture. Ces stations n’ont pas été testées avec cette passerelle. Merci aux auteurs :
+
+- **Ligne de tri avec deux robots** — [rparak/ABB-RobotStudio-SortingProductionLine](https://github.com/rparak/ABB-RobotStudio-SortingProductionLine).
+- **Tour de Hanoï avec YuMi** — [rparak/ABB-RobotStudio-YUMI-Tower-of_Hanoi](https://github.com/rparak/ABB-RobotStudio-YUMI-Tower-of_Hanoi).
+- **Assemblage et soudage simulé avec deux IRB2600** — [jorgeserranoo/abb-irb2600-robotic-assembly-cell](https://github.com/jorgeserranoo/abb-irb2600-robotic-assembly-cell).
+- **Tri et empilage avec IRB360 FlexPicker** — [andyzaur/ConveyorBelt-FlexPicker](https://github.com/andyzaur/ConveyorBelt-FlexPicker).
+- **Écriture cursive Hershey** — [FLo-ABB/Hershey-ABB-Robot-Handwriting](https://github.com/FLo-ABB/Hershey-ABB-Robot-Handwriting).
+
+<!-- END COMMUNITY SCENARIOS -->
+
 ## Fonctionnalités
 
 | Domaine | Commandes |
