@@ -6,7 +6,7 @@
 
 [![IRB120 dessinant robotstudio-mcp dans RobotStudio](docs/media/robotstudio-mcp-demo.gif)](docs/media/robotstudio-mcp-demo.mp4)
 
-Enregistrement dans RobotStudio 2024 : un contrôleur virtuel IRB120 trace `robotstudio-mcp`. La lecture accélère progressivement de 1× à 4×, revient à 1×, puis garde le résultat à l’écran pendant 3 secondes avant de boucler.
+Enregistrement dans RobotStudio 2024 : un contrôleur virtuel IRB120 trace `robotstudio-mcp`.
 
 [Voir / télécharger le MP4](docs/media/robotstudio-mcp-demo.mp4) · [Image fixe](docs/media/robotstudio-mcp-result.png)
 
@@ -20,8 +20,6 @@ Inspectez une station, chargez du code RAPID, lancez une simulation et vérifiez
 <!-- BEGIN EXAMPLE SCENES -->
 
 ## Exemples de scènes
-
-Captures originales des diapositives de soutenance du mémoire de master. Elles présentent des expériences antérieures dans RobotStudio, et non de nouveaux tests de compatibilité de la CLI ou de RobotStudio 2025/2026.
 
 ### Tracé et transfert entre robots
 
@@ -53,10 +51,15 @@ La cellule comporte une pince à vide, un convoyeur et deux palettes pour les ex
 
 ## Architecture
 
-```text
-AI agent -- Skill --> Node.js CLI ------+
-                                       |
-AI agent -- MCP ---> TypeScript server -+--> HTTP :8080 --> C# add-in --> ABB SDK
+```mermaid
+flowchart LR
+  agent["AI assistant"] -->|Skill| cli["Node.js CLI"]
+  agent -->|MCP / stdio| mcp["TypeScript MCP server"]
+  cli -->|HTTP :8080| addin["C# RobotStudio add-in"]
+  mcp -->|HTTP :8080| addin
+  addin --> sdk["ABB SDK"]
+  sdk --> station["RobotStudio station"]
+  sdk --> controller["Virtual controller"]
 ```
 
 Les deux interfaces partagent le même complément et la logique du contrôleur. La CLI nécessite Node.js 18+, sans paquet npm ni enregistrement MCP. Le complément reste indispensable. La Skill décrit la procédure ; elle ne remplace pas le SDK.
@@ -196,4 +199,4 @@ npm --prefix src run build
 
 ## Licence
 
-MIT, selon la déclaration du projet.
+Ce projet est distribué sous [licence MIT](LICENSE).

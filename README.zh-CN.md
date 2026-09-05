@@ -6,7 +6,7 @@
 
 [![IRB120 在 RobotStudio 中绘制 robotstudio-mcp](docs/media/robotstudio-mcp-demo.gif)](docs/media/robotstudio-mcp-demo.mp4)
 
-RobotStudio 2024 实录：IRB120 虚拟控制器绘制 `robotstudio-mcp`。画面从 1 倍速逐渐加速至 4 倍，再降回 1 倍，成字后定格 3 秒再循环。
+RobotStudio 2024 实录：IRB120 虚拟控制器绘制 `robotstudio-mcp`。
 
 [观看 / 下载 MP4](docs/media/robotstudio-mcp-demo.mp4) · [静态结果图](docs/media/robotstudio-mcp-result.png)
 
@@ -20,8 +20,6 @@ RobotStudio 2024 实录：IRB120 虚拟控制器绘制 `robotstudio-mcp`。画�
 <!-- BEGIN EXAMPLE SCENES -->
 
 ## 示例场景
-
-以下原始截图来自 master thesis 答辩 slides，展示已有的 RobotStudio 仿真实验，并非对新 CLI 或 RobotStudio 2025／2026 的新增兼容性测试。
 
 ### 数字绘制与跨机器人迁移
 
@@ -53,10 +51,15 @@ slides 对比了 IRB120 与 IRB2400 上的“34”绘制任务。这个场景用
 
 ## 架构
 
-```text
-AI agent -- Skill --> Node.js CLI ------+
-                                       |
-AI agent -- MCP ---> TypeScript server -+--> HTTP :8080 --> C# add-in --> ABB SDK
+```mermaid
+flowchart LR
+  agent["AI assistant"] -->|Skill| cli["Node.js CLI"]
+  agent -->|MCP / stdio| mcp["TypeScript MCP server"]
+  cli -->|HTTP :8080| addin["C# RobotStudio add-in"]
+  mcp -->|HTTP :8080| addin
+  addin --> sdk["ABB SDK"]
+  sdk --> station["RobotStudio station"]
+  sdk --> controller["Virtual controller"]
 ```
 
 两种入口共用插件和控制器逻辑。CLI 只需要 Node.js 18+，不需要安装 npm 依赖或注册 MCP 服务；C# 插件仍然必需。仓库 Skill 负责说明操作流程，不替代 SDK。
@@ -196,4 +199,4 @@ npm --prefix src run build
 
 ## 许可证
 
-本项目声明采用 MIT 许可证。
+本项目采用 [MIT 许可证](LICENSE)。

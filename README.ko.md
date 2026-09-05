@@ -6,7 +6,7 @@
 
 [![RobotStudio에서 robotstudio-mcp를 그리는 IRB120](docs/media/robotstudio-mcp-demo.gif)](docs/media/robotstudio-mcp-demo.mp4)
 
-RobotStudio 2024 녹화: IRB120 가상 컨트롤러로 `robotstudio-mcp`를 그립니다. 재생 속도가 1배속에서 4배속으로 서서히 올라갔다가 1배속으로 돌아오며, 완성된 글자를 3초간 보여 준 뒤 반복합니다.
+RobotStudio 2024 녹화: IRB120 가상 컨트롤러로 `robotstudio-mcp`를 그립니다.
 
 [MP4 보기 / 다운로드](docs/media/robotstudio-mcp-demo.mp4) · [정지 이미지](docs/media/robotstudio-mcp-result.png)
 
@@ -20,8 +20,6 @@ RobotStudio 2024 녹화: IRB120 가상 컨트롤러로 `robotstudio-mcp`를 그�
 <!-- BEGIN EXAMPLE SCENES -->
 
 ## 예제 장면
-
-석사 학위 논문 심사 발표 슬라이드의 원본 스크린샷입니다. 과거 RobotStudio 시뮬레이션 실험을 보여 주며 새 CLI 또는 RobotStudio 2025/2026의 호환성 테스트가 아닙니다.
 
 ### 숫자 그리기와 다른 로봇으로의 이전
 
@@ -53,10 +51,15 @@ RobotStudio 2024 녹화: IRB120 가상 컨트롤러로 `robotstudio-mcp`를 그�
 
 ## 구조
 
-```text
-AI agent -- Skill --> Node.js CLI ------+
-                                       |
-AI agent -- MCP ---> TypeScript server -+--> HTTP :8080 --> C# add-in --> ABB SDK
+```mermaid
+flowchart LR
+  agent["AI assistant"] -->|Skill| cli["Node.js CLI"]
+  agent -->|MCP / stdio| mcp["TypeScript MCP server"]
+  cli -->|HTTP :8080| addin["C# RobotStudio add-in"]
+  mcp -->|HTTP :8080| addin
+  addin --> sdk["ABB SDK"]
+  sdk --> station["RobotStudio station"]
+  sdk --> controller["Virtual controller"]
 ```
 
 두 인터페이스는 동일한 애드인과 컨트롤러 로직을 공유합니다. CLI에는 Node.js 18+만 필요하며 npm 패키지 설치나 MCP 등록은 필요하지 않습니다. 애드인은 여전히 필요합니다. Skill은 작업 절차를 설명하며 SDK를 대체하지 않습니다.
@@ -196,4 +199,4 @@ npm --prefix src run build
 
 ## 라이선스
 
-프로젝트에서 명시한 라이선스는 MIT입니다.
+이 프로젝트는 [MIT 라이선스](LICENSE)로 배포됩니다.

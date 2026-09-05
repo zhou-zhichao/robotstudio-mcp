@@ -6,7 +6,7 @@
 
 [![RobotStudio で robotstudio-mcp を描く IRB120](docs/media/robotstudio-mcp-demo.gif)](docs/media/robotstudio-mcp-demo.mp4)
 
-RobotStudio 2024 での録画：IRB120 の仮想コントローラーで `robotstudio-mcp` を描画します。再生速度を等速から徐々に4倍速へ上げ、等速に戻した後、完成した文字を3秒間表示してループします。
+RobotStudio 2024 での録画：IRB120 の仮想コントローラーで `robotstudio-mcp` を描画します。
 
 [MP4 を再生 / ダウンロード](docs/media/robotstudio-mcp-demo.mp4) · [静止画](docs/media/robotstudio-mcp-result.png)
 
@@ -20,8 +20,6 @@ RobotStudio 2024 での録画：IRB120 の仮想コントローラーで `robots
 <!-- BEGIN EXAMPLE SCENES -->
 
 ## 実験シーン
-
-修士論文の口頭試問スライドに掲載された元のスクリーンショットです。過去の RobotStudio シミュレーション実験を示しており、新しい CLI や RobotStudio 2025／2026 の互換性試験ではありません。
 
 ### 数字の描画と別ロボットへの移行
 
@@ -53,10 +51,15 @@ RobotStudio 2024 での録画：IRB120 の仮想コントローラーで `robots
 
 ## 構成
 
-```text
-AI agent -- Skill --> Node.js CLI ------+
-                                       |
-AI agent -- MCP ---> TypeScript server -+--> HTTP :8080 --> C# add-in --> ABB SDK
+```mermaid
+flowchart LR
+  agent["AI assistant"] -->|Skill| cli["Node.js CLI"]
+  agent -->|MCP / stdio| mcp["TypeScript MCP server"]
+  cli -->|HTTP :8080| addin["C# RobotStudio add-in"]
+  mcp -->|HTTP :8080| addin
+  addin --> sdk["ABB SDK"]
+  sdk --> station["RobotStudio station"]
+  sdk --> controller["Virtual controller"]
 ```
 
 両方の入口でアドインとコントローラーの処理を共有します。CLI は Node.js 18+ のみで動作し、npm パッケージのインストールや MCP 登録は不要です。アドインは引き続き必要です。Skill は操作手順を定義するもので、SDK の代わりにはなりません。
@@ -196,4 +199,4 @@ npm --prefix src run build
 
 ## ライセンス
 
-本プロジェクトが表明するライセンスは MIT です。
+本プロジェクトは [MIT ライセンス](LICENSE)で公開されています。
