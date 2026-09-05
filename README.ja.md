@@ -2,6 +2,16 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [Español](README.es.md) · [Português (Brasil)](README.pt-BR.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Français](README.fr.md) · [Deutsch](README.de.md)
 
+<!-- BEGIN HERO DEMO -->
+
+[![RobotStudio で robotstudio-mcp を描く IRB120](docs/media/robotstudio-mcp-demo.gif)](docs/media/robotstudio-mcp-demo.mp4)
+
+RobotStudio 2024 での録画：IRB120 の仮想コントローラーで `robotstudio-mcp` を描画します。再生速度を等速から徐々に4倍速へ上げ、等速に戻した後、完成した文字を3秒間表示してループします。
+
+[MP4 を再生 / ダウンロード](docs/media/robotstudio-mcp-demo.mp4) · [静止画](docs/media/robotstudio-mcp-result.png)
+
+<!-- END HERO DEMO -->
+
 **Skills、ローカル CLI、MCP を通じて AI アシスタントと ABB RobotStudio を接続します。**
 
 ステーションの確認、RAPID ソースのアップロード、シミュレーションの実行、状態・ログ・画像による結果確認を行えます。この研究プロジェクトは C# 製 HTTP アドインを基盤に、リポジトリの Skill に従って使う独立した Node.js CLI と、任意で利用できる TypeScript MCP サーバーを提供します。

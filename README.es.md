@@ -2,6 +2,16 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [Español](README.es.md) · [Português (Brasil)](README.pt-BR.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Français](README.fr.md) · [Deutsch](README.de.md)
 
+<!-- BEGIN HERO DEMO -->
+
+[![IRB120 dibujando robotstudio-mcp en RobotStudio](docs/media/robotstudio-mcp-demo.gif)](docs/media/robotstudio-mcp-demo.mp4)
+
+Grabación en RobotStudio 2024: un controlador virtual IRB120 dibuja `robotstudio-mcp`. La reproducción acelera gradualmente de 1× a 4×, vuelve a 1× y mantiene el resultado durante 3 segundos antes de repetirse.
+
+[Ver / descargar MP4](docs/media/robotstudio-mcp-demo.mp4) · [Imagen fija](docs/media/robotstudio-mcp-result.png)
+
+<!-- END HERO DEMO -->
+
 **Conecta asistentes de IA con ABB RobotStudio mediante Skills, una CLI local o MCP.**
 
 Inspecciona una estación, carga código RAPID, ejecuta una simulación y comprueba el resultado con estados, registros e imágenes. Este proyecto de investigación ofrece un complemento HTTP en C# y dos interfaces: una CLI independiente en Node.js guiada por una Skill del repositorio y un servidor MCP opcional en TypeScript.

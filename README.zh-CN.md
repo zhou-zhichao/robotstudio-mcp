@@ -2,6 +2,16 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [Español](README.es.md) · [Português (Brasil)](README.pt-BR.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Français](README.fr.md) · [Deutsch](README.de.md)
 
+<!-- BEGIN HERO DEMO -->
+
+[![IRB120 在 RobotStudio 中绘制 robotstudio-mcp](docs/media/robotstudio-mcp-demo.gif)](docs/media/robotstudio-mcp-demo.mp4)
+
+RobotStudio 2024 实录：IRB120 虚拟控制器绘制 `robotstudio-mcp`。画面从 1 倍速逐渐加速至 4 倍，再降回 1 倍，成字后定格 3 秒再循环。
+
+[观看 / 下载 MP4](docs/media/robotstudio-mcp-demo.mp4) · [静态结果图](docs/media/robotstudio-mcp-result.png)
+
+<!-- END HERO DEMO -->
+
 **通过 Skills、本地 CLI 或 MCP，让 AI 助手操作 ABB RobotStudio。**
 
 读取工作站、上传 RAPID 程序、运行仿真，再根据状态、日志和截图检查结果。本研究项目以一个 C# HTTP 插件为基础，提供两种入口：由仓库 Skill 指导使用的独立 Node.js CLI，以及可选的 TypeScript MCP 服务。

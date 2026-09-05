@@ -1,0 +1,19 @@
+{
+  "source_filename": "2026-09-05 21-02-19.mp4",
+  "source_start_seconds": 18.5,
+  "source_end_seconds": 48.5,
+  "speed_profile": "1x -> gradual 4x -> gradual 1x",
+  "final_freeze_seconds": 3.0,
+  "ideal_duration_seconds": 14.1702,
+  "gif": {
+    "width": 960,
+    "fps": 16,
+    "loop": "infinite"
+  },
+  "mp4": {
+    "width": 1920,
+    "fps": 30,
+    "audio": false
+  },
+  "note": "Playback is retimed; it does not show real-time robot speed."
+}
