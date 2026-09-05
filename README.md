@@ -6,6 +6,31 @@
 
 Inspect a station, upload RAPID source, run a simulation and read back what happened. This research project provides one C# HTTP add-in with two agent interfaces: a standalone Node.js CLI guided by a repository Skill, and an optional TypeScript MCP server.
 
+
+<!-- BEGIN EXAMPLE SCENES -->
+
+## Example scenes
+
+Screenshots from the master’s thesis defence slides, showing earlier RobotStudio simulation experiments. They are not new compatibility tests for the CLI or RobotStudio 2025/2026.
+
+### Drawing and cross-robot transfer
+
+The slides compare the “34” drawing task on IRB120 and IRB2400. This scenario exercises RAPID motion generation, work-object placement and adapting the drawing scale to another robot.
+
+| IRB120 | IRB2400 |
+|:---:|:---:|
+| <img src="docs/images/examples/drawing-irb120.png" alt="IRB120" width="420"> | <img src="docs/images/examples/drawing-irb2400.png" alt="IRB2400" width="420"> |
+
+### Conveyor pick-and-place and palletizing
+
+A vacuum-gripper cell with a conveyor and two pallets supports pick-and-place and stacking experiments. The result image shows the recorded 14-block orange pyramid.
+
+| Cell layout | Recorded stacking result |
+|:---:|:---:|
+| <img src="docs/images/examples/palletizing-station.png" alt="Cell layout" width="420"> | <img src="docs/images/examples/orange-pyramid-result.png" alt="Recorded stacking result" width="420"> |
+
+<!-- END EXAMPLE SCENES -->
+
 ## What you can do
 
 | Area | Commands |

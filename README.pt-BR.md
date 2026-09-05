@@ -6,6 +6,31 @@
 
 Inspecione uma estação, envie código RAPID, execute uma simulação e confira o resultado por estados, logs e imagens. Este projeto de pesquisa oferece um suplemento HTTP em C# e duas interfaces: uma CLI independente em Node.js orientada por uma Skill do repositório e um servidor MCP opcional em TypeScript.
 
+
+<!-- BEGIN EXAMPLE SCENES -->
+
+## Cenários de exemplo
+
+Capturas originais dos slides de defesa da dissertação de mestrado. Mostram experimentos anteriores de simulação no RobotStudio, não novos testes de compatibilidade da CLI ou do RobotStudio 2025/2026.
+
+### Desenho e transferência entre robôs
+
+Os slides comparam o desenho de “34” no IRB120 e no IRB2400. O cenário explora a geração de movimentos RAPID, o posicionamento do objeto de trabalho e o ajuste da escala para outro robô.
+
+| IRB120 | IRB2400 |
+|:---:|:---:|
+| <img src="docs/images/examples/drawing-irb120.png" alt="IRB120" width="420"> | <img src="docs/images/examples/drawing-irb2400.png" alt="IRB2400" width="420"> |
+
+### Coleta na esteira e paletização
+
+A célula tem uma garra a vácuo, uma esteira e dois paletes para experimentos de coleta, posicionamento e empilhamento. A imagem do resultado mostra a pirâmide laranja de 14 blocos registrada no experimento.
+
+| Visão da célula | Resultado de empilhamento registrado |
+|:---:|:---:|
+| <img src="docs/images/examples/palletizing-station.png" alt="Visão da célula" width="420"> | <img src="docs/images/examples/orange-pyramid-result.png" alt="Resultado de empilhamento registrado" width="420"> |
+
+<!-- END EXAMPLE SCENES -->
+
 ## Recursos
 
 | Área | Comandos |

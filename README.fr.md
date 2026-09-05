@@ -6,6 +6,31 @@
 
 Inspectez une station, chargez du code RAPID, lancez une simulation et vérifiez le résultat grâce aux états, journaux et images. Ce projet de recherche repose sur un complément HTTP en C# et propose deux interfaces : une CLI Node.js autonome guidée par une Skill du dépôt, et un serveur MCP TypeScript facultatif.
 
+
+<!-- BEGIN EXAMPLE SCENES -->
+
+## Exemples de scènes
+
+Captures originales des diapositives de soutenance du mémoire de master. Elles présentent des expériences antérieures dans RobotStudio, et non de nouveaux tests de compatibilité de la CLI ou de RobotStudio 2025/2026.
+
+### Tracé et transfert entre robots
+
+Les diapositives comparent le tracé de « 34 » sur IRB120 et IRB2400. Ce scénario explore la génération de mouvements RAPID, le placement du repère de travail et l’adaptation de l’échelle à un autre robot.
+
+| IRB120 | IRB2400 |
+|:---:|:---:|
+| <img src="docs/images/examples/drawing-irb120.png" alt="IRB120" width="420"> | <img src="docs/images/examples/drawing-irb2400.png" alt="IRB2400" width="420"> |
+
+### Prise sur convoyeur et palettisation
+
+La cellule comporte une pince à vide, un convoyeur et deux palettes pour les expériences de prise, dépose et empilage. L’image du résultat montre la pyramide orange de 14 blocs enregistrée lors de l’expérience.
+
+| Vue de la cellule | Résultat d’empilage enregistré |
+|:---:|:---:|
+| <img src="docs/images/examples/palletizing-station.png" alt="Vue de la cellule" width="420"> | <img src="docs/images/examples/orange-pyramid-result.png" alt="Résultat d’empilage enregistré" width="420"> |
+
+<!-- END EXAMPLE SCENES -->
+
 ## Fonctionnalités
 
 | Domaine | Commandes |

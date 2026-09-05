@@ -6,6 +6,31 @@
 
 读取工作站、上传 RAPID 程序、运行仿真，再根据状态、日志和截图检查结果。本研究项目以一个 C# HTTP 插件为基础，提供两种入口：由仓库 Skill 指导使用的独立 Node.js CLI，以及可选的 TypeScript MCP 服务。
 
+
+<!-- BEGIN EXAMPLE SCENES -->
+
+## 示例场景
+
+以下原始截图来自 master thesis 答辩 slides，展示已有的 RobotStudio 仿真实验，并非对新 CLI 或 RobotStudio 2025／2026 的新增兼容性测试。
+
+### 数字绘制与跨机器人迁移
+
+slides 对比了 IRB120 与 IRB2400 上的“34”绘制任务。这个场景用于检验 RAPID 运动程序生成、工件坐标系设置，以及换用机器人后的绘制位置与尺寸调整。
+
+| IRB120 | IRB2400 |
+|:---:|:---:|
+| <img src="docs/images/examples/drawing-irb120.png" alt="IRB120" width="420"> | <img src="docs/images/examples/drawing-irb2400.png" alt="IRB2400" width="420"> |
+
+### 传送带抓取与托盘堆垛
+
+工作站包含真空吸盘、传送带和两个托盘，用于抓取放置及堆垛实验。结果图展示了实验记录中的 14 块橙色方块金字塔。
+
+| 工作站全景 | 实验堆垛结果 |
+|:---:|:---:|
+| <img src="docs/images/examples/palletizing-station.png" alt="工作站全景" width="420"> | <img src="docs/images/examples/orange-pyramid-result.png" alt="实验堆垛结果" width="420"> |
+
+<!-- END EXAMPLE SCENES -->
+
 ## 可以做什么
 
 | 类别 | 命令 |

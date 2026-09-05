@@ -6,6 +6,31 @@
 
 스테이션 확인, RAPID 소스 업로드, 시뮬레이션 실행 후 상태·로그·이미지로 결과를 확인할 수 있습니다. 이 연구 프로젝트는 C# HTTP 애드인을 기반으로 두 가지 인터페이스를 제공합니다. 저장소 Skill의 안내에 따라 사용하는 독립 Node.js CLI와 선택적으로 사용하는 TypeScript MCP 서버입니다.
 
+
+<!-- BEGIN EXAMPLE SCENES -->
+
+## 예제 장면
+
+석사 학위 논문 심사 발표 슬라이드의 원본 스크린샷입니다. 과거 RobotStudio 시뮬레이션 실험을 보여 주며 새 CLI 또는 RobotStudio 2025/2026의 호환성 테스트가 아닙니다.
+
+### 숫자 그리기와 다른 로봇으로의 이전
+
+슬라이드는 IRB120과 IRB2400에서 “34”를 그린 결과를 비교합니다. RAPID 동작 생성, 워크오브젝트 배치, 다른 로봇에 맞춘 그림 크기 조정을 다룬 장면입니다.
+
+| IRB120 | IRB2400 |
+|:---:|:---:|
+| <img src="docs/images/examples/drawing-irb120.png" alt="IRB120" width="420"> | <img src="docs/images/examples/drawing-irb2400.png" alt="IRB2400" width="420"> |
+
+### 컨베이어 픽앤플레이스와 팔레타이징
+
+진공 그리퍼, 컨베이어, 팔레트 두 개가 있는 셀에서 이송과 적재를 실험합니다. 결과 이미지는 실험에서 기록한 주황색 블록 14개의 피라미드입니다.
+
+| 작업 셀 전경 | 기록된 적재 결과 |
+|:---:|:---:|
+| <img src="docs/images/examples/palletizing-station.png" alt="작업 셀 전경" width="420"> | <img src="docs/images/examples/orange-pyramid-result.png" alt="기록된 적재 결과" width="420"> |
+
+<!-- END EXAMPLE SCENES -->
+
 ## 주요 기능
 
 | 분류 | 명령 |

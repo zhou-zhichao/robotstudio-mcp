@@ -6,6 +6,31 @@
 
 ステーションの確認、RAPID ソースのアップロード、シミュレーションの実行、状態・ログ・画像による結果確認を行えます。この研究プロジェクトは C# 製 HTTP アドインを基盤に、リポジトリの Skill に従って使う独立した Node.js CLI と、任意で利用できる TypeScript MCP サーバーを提供します。
 
+
+<!-- BEGIN EXAMPLE SCENES -->
+
+## 実験シーン
+
+修士論文の口頭試問スライドに掲載された元のスクリーンショットです。過去の RobotStudio シミュレーション実験を示しており、新しい CLI や RobotStudio 2025／2026 の互換性試験ではありません。
+
+### 数字の描画と別ロボットへの移行
+
+スライドでは IRB120 と IRB2400 による「34」の描画を比較しています。RAPID の動作生成、ワークオブジェクトの配置、別のロボットに合わせた描画サイズの調整を扱うシーンです。
+
+| IRB120 | IRB2400 |
+|:---:|:---:|
+| <img src="docs/images/examples/drawing-irb120.png" alt="IRB120" width="420"> | <img src="docs/images/examples/drawing-irb2400.png" alt="IRB2400" width="420"> |
+
+### コンベヤーからのピック＆プレースとパレタイジング
+
+真空グリッパー、コンベヤー、2 台のパレットを備えたセルで、搬送と積み上げを実験しています。結果画像は実験で記録された 14 個のオレンジ色ブロックによるピラミッドです。
+
+| セル全景 | 記録された積み上げ結果 |
+|:---:|:---:|
+| <img src="docs/images/examples/palletizing-station.png" alt="セル全景" width="420"> | <img src="docs/images/examples/orange-pyramid-result.png" alt="記録された積み上げ結果" width="420"> |
+
+<!-- END EXAMPLE SCENES -->
+
 ## 主な機能
 
 | 分類 | コマンド |

@@ -6,6 +6,31 @@
 
 Stationen untersuchen, RAPID-Quellcode hochladen, Simulationen ausführen und Ergebnisse anhand von Status, Protokollen und Bildern prüfen. Dieses Forschungsprojekt bietet ein HTTP-Add-in in C# mit zwei Zugängen: eine eigenständige Node.js-CLI mit einer Skill-Anleitung im Repository und einen optionalen MCP-Server in TypeScript.
 
+
+<!-- BEGIN EXAMPLE SCENES -->
+
+## Beispielszenen
+
+Originalbilder aus den Folien zur Verteidigung der Masterarbeit. Sie zeigen frühere RobotStudio-Simulationen und keine neuen Kompatibilitätstests der CLI oder von RobotStudio 2025/2026.
+
+### Zeichnen und Übertragung auf andere Roboter
+
+Die Folien vergleichen das Zeichnen von „34“ mit IRB120 und IRB2400. Das Szenario untersucht RAPID-Bewegungen, die Platzierung des Werkobjekts und die Anpassung der Zeichnungsgröße an einen anderen Roboter.
+
+| IRB120 | IRB2400 |
+|:---:|:---:|
+| <img src="docs/images/examples/drawing-irb120.png" alt="IRB120" width="420"> | <img src="docs/images/examples/drawing-irb2400.png" alt="IRB2400" width="420"> |
+
+### Entnahme vom Förderband und Palettieren
+
+Die Zelle besitzt einen Vakuumgreifer, ein Förderband und zwei Paletten für Greif-, Ablage- und Stapelversuche. Das Ergebnisbild zeigt die im Experiment dokumentierte orange Pyramide aus 14 Blöcken.
+
+| Zellenübersicht | Dokumentiertes Stapelergebnis |
+|:---:|:---:|
+| <img src="docs/images/examples/palletizing-station.png" alt="Zellenübersicht" width="420"> | <img src="docs/images/examples/orange-pyramid-result.png" alt="Dokumentiertes Stapelergebnis" width="420"> |
+
+<!-- END EXAMPLE SCENES -->
+
 ## Funktionen
 
 | Bereich | Befehle |
