@@ -919,7 +919,7 @@ function createServer(): Server {
 
         const errorLines: string[] = [];
         for (const msg of errorLogResponse.messages) {
-          let line = `[${msg.type}] ${msg.title}`;
+          let line = `[${msg.timestamp}] [${msg.type}] ${msg.title}`;
           if (msg.body) line += ` - ${msg.body}`;
           errorLines.push(line);
         }

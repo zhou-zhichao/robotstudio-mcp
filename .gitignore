@@ -15,6 +15,7 @@ packages/
 .vs/
 
 # Build outputs
+artifacts/
 *.dll
 *.pdb
 *.exe

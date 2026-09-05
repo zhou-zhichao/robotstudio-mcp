@@ -35,9 +35,10 @@
 
   <!-- Resolve RobotStudio SDK bin path for either Program Files or Program Files (x86) -->
   <PropertyGroup>
+    <RobotStudioVersion Condition="'$(RobotStudioVersion)' == ''">2024</RobotStudioVersion>
     <ProgramFilesX86>$([System.Environment]::GetEnvironmentVariable('ProgramFiles(x86)'))</ProgramFilesX86>
-    <RobotStudioBin Condition="Exists('$(ProgramFilesX86)\ABB\RobotStudio 2024\Bin')">$(ProgramFilesX86)\ABB\RobotStudio 2024\Bin</RobotStudioBin>
-    <RobotStudioBin Condition="'$(RobotStudioBin)' == ''">$(ProgramFiles)\ABB\RobotStudio 2024\Bin</RobotStudioBin>
+    <RobotStudioBin Condition="'$(RobotStudioBin)' == '' And Exists('$(ProgramFilesX86)\ABB\RobotStudio $(RobotStudioVersion)\Bin')">$(ProgramFilesX86)\ABB\RobotStudio $(RobotStudioVersion)\Bin</RobotStudioBin>
+    <RobotStudioBin Condition="'$(RobotStudioBin)' == ''">$(ProgramFiles)\ABB\RobotStudio $(RobotStudioVersion)\Bin</RobotStudioBin>
   </PropertyGroup>
 
   <ItemGroup>
@@ -85,16 +86,10 @@
     <None Include="RobotStudioMcpAddin.rsaddin" />
   </ItemGroup>
 
-  <!-- Post-build event to copy DLL to RobotStudio Addins folder -->
-  <PropertyGroup>
-    <RobotStudioAddinsDir>$(RobotStudioBin)\Addins\RobotStudioMcpAddin</RobotStudioAddinsDir>
-    <PostBuildEvent>
-      if not exist "$(RobotStudioAddinsDir)" mkdir "$(RobotStudioAddinsDir)"
-      copy /Y "$(TargetPath)" "$(RobotStudioAddinsDir)\"
-      copy /Y "$(ProjectDir)RobotStudioMcpAddin.rsaddin" "$(RobotStudioAddinsDir)\"
-      if exist "$(TargetDir)Newtonsoft.Json.dll" copy /Y "$(TargetDir)Newtonsoft.Json.dll" "$(RobotStudioAddinsDir)\"
-    </PostBuildEvent>
-  </PropertyGroup>
+  <Target Name="ValidateSdk" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(RobotStudioVersion)' != '2024' And '$(RobotStudioVersion)' != '2025'" Text="This project supports Framework build targets only (2024/2025). Use the experimental Net10 project for 2026." />
+    <Error Condition="!Exists('$(RobotStudioBin)\ABB.Robotics.RobotStudio.dll')" Text="RobotStudio SDK not found. Set RobotStudioBin to the matching host Bin directory." />
+  </Target>
 
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

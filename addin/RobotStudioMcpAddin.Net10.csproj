@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Experimental migration target; not compiled or host-tested for 2026. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>RobotStudioMcpAddin</AssemblyName>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="RobotStudioAddin.cs" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <Reference Include="ABB.Robotics.RobotStudio"><HintPath>$(RobotStudioBin)\ABB.Robotics.RobotStudio.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="ABB.Robotics.RobotStudio.Stations"><HintPath>$(RobotStudioBin)\ABB.Robotics.RobotStudio.Stations.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="ABB.Robotics.Controllers.PC"><HintPath>$(RobotStudioBin)\ABB.Robotics.Controllers.PC.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="ABB.Robotics.Math"><HintPath>$(RobotStudioBin)\ABB.Robotics.Math.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <Target Name="ValidateSdk" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(RobotStudioBin)' == ''" Text="Set RobotStudioBin to the RobotStudio 2026 .NET 10 assembly directory." />
+    <Error Condition="!Exists('$(RobotStudioBin)\ABB.Robotics.RobotStudio.dll')" Text="RobotStudio SDK assembly not found." />
+  </Target>
+</Project>

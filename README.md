@@ -1,6 +1,6 @@
-# RobotStudio MCP Server Bridge
+# RobotStudio Agent Bridge — Skills, CLI and MCP
 
-A Model Context Protocol (MCP) server that allows AI assistants to control ABB RobotStudio — reading joint positions, uploading RAPID programs, and executing robot motions in simulation.
+A local bridge that allows AI assistants to control ABB RobotStudio — reading joint positions, uploading RAPID programs, and executing robot motions in simulation. Use the repository Skill and dependency-free Node.js CLI, or the existing Model Context Protocol (MCP) server.
 
 Built as a research experiment by a human + Claude (Anthropic AI) pair. See [docs/DEVELOPMENT_LOG.md](docs/DEVELOPMENT_LOG.md) for the honest story of how this was built, including all the failures.
 
@@ -17,16 +17,25 @@ Two components:
 1. **C# Add-in** (.NET Framework 4.8) — Runs inside RobotStudio, exposes HTTP REST API on port 8080
 2. **TypeScript MCP Server** (Node.js) — Bridges MCP protocol to HTTP API
 
+The optional local CLI bypasses component 2: `Agent -> Skill -> CLI -> HTTP Add-in -> SDK`. Both interfaces use the same C# implementation.
+
 ## Project Structure
 
 ```
 /robotstudio-mcp
+  /.agents/skills/robotstudio
+    SKILL.md                      # Repository agent workflow
+  /scripts
+    robotstudio.mjs                # Standalone HTTP CLI (no npm dependencies)
+    robotstudio-paths.ps1          # SDK path resolution
+  /tests
+    robotstudio-cli.test.mjs       # Mock HTTP / CLI tests
   /src
-    server.ts                     # TypeScript MCP Server (7 tools)
+    server.ts                     # TypeScript MCP Server (16 tools)
     package.json
     tsconfig.json
   /addin
-    RobotStudioAddin.cs           # C# Add-in (8 HTTP endpoints)
+    RobotStudioAddin.cs           # C# Add-in (17 HTTP endpoints)
     RobotStudioMcpAddin.csproj    # MSBuild project file
     RobotStudioMcpAddin.rsaddin   # Add-in manifest (XML)
     packages.config               # NuGet dependencies
@@ -39,12 +48,40 @@ Two components:
 
 ## Prerequisites
 
-- ABB RobotStudio 2024 (or compatible version)
+**Compatibility:** RobotStudio 2024 is the existing implementation baseline. RobotStudio 2025 and 2026 are not tested by this project; 2026.1+ requires migrating the add-in to .NET 10. See the [compatibility and Skills/MCP interface plan](docs/COMPATIBILITY_AND_AGENT_INTERFACES.md) for evidence, proposed adaptations, and validation limits.
+
+- ABB RobotStudio 2024 (other versions require separate compatibility validation)
 - .NET Framework 4.8 SDK
 - Node.js 18+
-- MSBuild (included with .NET Framework)
+- Visual Studio Build Tools / MSBuild for the Framework add-in
+- Newtonsoft.Json 13.0.3 restored under `addin/packages` (for example, `nuget install addin/packages.config -OutputDirectory addin/packages`)
 
 ## Quick Start
+
+### Local Skill / CLI (no MCP setup)
+
+Build/deploy the C# add-in below, start RobotStudio and open a station with a virtual controller. Then run from the repository root:
+
+```powershell
+node scripts/robotstudio.mjs health
+node scripts/robotstudio.mjs get_station_status
+node scripts/robotstudio.mjs get_screenshot --output artifacts/view.png
+node scripts/robotstudio.mjs --describe upload_rapid_module
+```
+
+The repository Skill lives in [`.agents/skills/robotstudio/SKILL.md`](.agents/skills/robotstudio/SKILL.md). In Codex, invoke `$robotstudio` while working in this repository. Other agents with local shell access can use the CLI directly or load the same instructions.
+
+Use `--params-file params.json` for JSON arguments and `--code-file program.mod` for RAPID upload. Example `params.json`: `{"moduleName":"Demo","taskName":"T_ROB1","replaceExisting":false}`.
+
+```powershell
+node scripts/robotstudio.mjs upload_rapid_module --params-file params.json --code-file program.mod
+```
+
+All 16 existing tool names are supported, plus `health`. Run `--help` and `--describe <command>` for the command contract. JSON goes to stdout; failures produce JSON on stderr and a nonzero exit code. `--output` saves JSON for normal commands or PNG for screenshots and never overwrites files. Screenshots require `--output`. `--url` / `ROBOTSTUDIO_API_BASE` selects the HTTP add-in origin; the default is `http://127.0.0.1:8080`. `--timeout` is in milliseconds. Requests are never retried automatically.
+
+The CLI returns raw HTTP JSON, not MCP's formatted text or unit conversions. Interpret scene geometry using the SDK's units (meters for positions/bounds); do not assume raw values are millimeters. The upload endpoint can remove multiple program modules when replacement is enabled. Back up affected modules first; automatic rollback is not implemented. Reset includes existing demo-specific box cleanup.
+
+The CLI requires only Node.js 18+, without npm installation. The MCP route below remains optional.
 
 ### 1. Build & Deploy the C# Add-in
 
@@ -56,16 +93,15 @@ Two components:
 .\deploy.ps1
 ```
 
-Or manually:
+Builds now write to `artifacts/<year>` and never auto-deploy. Both scripts accept `-RobotStudioVersion 2024|2025|2026` and `-RobotStudioBin <matching-installation-Bin>`; the build script also accepts `-MSBuildPath`. Deployment checks build metadata and supports `-WhatIf`.
 
-```bash
-# Build
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\MSBuild.exe addin\RobotStudioMcpAddin.csproj /p:Configuration=Release
+2025 remains untested. The separate `addin/RobotStudioMcpAddin.Net10.csproj` is an **uncompiled experimental 2026 migration target**, requiring matching .NET 10 ABB assemblies and `-Experimental` on both scripts. It does not establish 2026 compatibility. See the [compatibility plan](docs/COMPATIBILITY_AND_AGENT_INTERFACES.md).
 
-# Copy to RobotStudio Addins folder (needs admin)
-copy addin\bin\Release\RobotStudioMcpAddin.dll "C:\Program Files (x86)\ABB\RobotStudio 2024\Bin\Addins\RobotStudioMcpAddin\"
-copy addin\bin\Release\Newtonsoft.Json.dll "C:\Program Files (x86)\ABB\RobotStudio 2024\Bin\Addins\RobotStudioMcpAddin\"
-copy addin\RobotStudioMcpAddin.rsaddin "C:\Program Files (x86)\ABB\RobotStudio 2024\Bin\Addins\RobotStudioMcpAddin\"
+Example with explicit SDK selection (2025 remains untested):
+
+```powershell
+.\build.ps1 -RobotStudioVersion 2025 -RobotStudioBin 'C:\Program Files (x86)\ABB\RobotStudio 2025\Bin'
+.\deploy.ps1 -RobotStudioVersion 2025 -WhatIf
 ```
 
 ### 2. Build the TypeScript MCP Server
@@ -152,16 +188,22 @@ Add to `%AppData%\Claude\claude_desktop_config.json`:
 
 | Tool | Description |
 |------|-------------|
-| `get_robot_joints` | Read real-time joint positions (J1-J6) in degrees |
-| `control_simulation` | Start/stop RobotStudio simulation |
-| `get_station_status` | Get station, simulation, and controller info |
-| `upload_rapid_module` | Upload RAPID code to the virtual controller |
 | `control_rapid_execution` | Start/stop/reset RAPID program execution |
+| `control_simulation` | Start, stop, or reset RobotStudio simulation |
+| `get_execution_errors` | Read controller event log errors, warnings, and messages |
+| `get_io_signals` | Read digital and analog I/O signal values |
 | `get_rapid_execution_status` | Get execution status and program pointer |
 | `get_rapid_module_source` | Read RAPID module source code from controller |
-| `list_rapid_modules` | List all loaded modules grouped by task |
-| `get_execution_errors` | Read event log for errors and warnings |
+| `get_robot_joints` | Read real-time joint positions (J1-J6) in degrees |
+| `get_scene_objects` | Read station scene objects, transforms, visibility, and bounding boxes |
 | `get_screenshot` | Capture 3D view screenshot (base64 PNG) |
+| `get_station_status` | Get station, simulation, and controller info |
+| `list_rapid_modules` | List all loaded modules grouped by task |
+| `list_rapid_variables` | List RAPID variables across modules, with optional type filtering |
+| `read_rapid_variable` | Read the current value of a RAPID variable |
+| `set_io_signal` | Set a digital or analog I/O signal value |
+| `set_rapid_variable` | Write a RAPID variable value while execution is stopped |
+| `upload_rapid_module` | Upload RAPID code to the virtual controller |
 
 ## HTTP API Endpoints
 
@@ -170,11 +212,20 @@ Add to `%AppData%\Claude\claude_desktop_config.json`:
 | `/health` | GET | Health check |
 | `/status` | GET | Station and simulation status |
 | `/joints` | GET | Current joint positions (J1-J6) |
-| `/simulation` | POST | Control simulation (`{"action": "start\|stop"}`) |
+| `/simulation` | POST | Control simulation (`{"action": "start\|stop\|reset"}`) |
 | `/rapid/upload` | POST | Upload RAPID module |
 | `/rapid/execute` | POST | Control execution (`{"action": "start\|stop\|resetpp"}`) |
 | `/rapid/status` | GET | Execution status and program pointer |
+| `/rapid/source` | POST | Read RAPID module source |
+| `/rapid/modules` | GET | List loaded RAPID modules |
 | `/rapid/errors` | GET | Recent event log messages |
+| `/rapid/variable` | POST | Read a RAPID variable |
+| `/rapid/variable/set` | POST | Write a RAPID variable |
+| `/rapid/variables` | GET/POST | List RAPID variables; POST accepts filters |
+| `/io/signals` | GET/POST | Read I/O values; POST accepts a signal filter |
+| `/io/signals/set` | POST | Set an I/O signal value |
+| `/scene/objects` | GET/POST | Read scene objects; POST accepts filters |
+| `/screenshot` | POST | Capture a RobotStudio 3D view screenshot |
 
 ### RAPID Upload Example
 
@@ -197,7 +248,7 @@ See [docs/DEVELOPMENT_LOG.md](docs/DEVELOPMENT_LOG.md) for the full debugging st
 
 1. **HttpListener requires admin** — We use TcpListener instead (no special permissions needed)
 2. **Must deploy to Program Files** — RobotStudio only scans `C:\Program Files (x86)\ABB\RobotStudio 2024\Bin\Addins\`, not `%LocalAppData%`
-3. **C# 5 syntax only** — MSBuild v4.0 doesn't support `?.`, `$""`, `out var`, `catch when`
+3. **Legacy compiler limitations** — The original Framework v4 compiler did not support modern C# syntax. The build script now discovers Visual Studio MSBuild; use that toolchain for current builds.
 4. **rsaddin manifest** — Must use `<Dependencies>Online</Dependencies>` and `<Platform>Any</Platform>`
 
 ### RAPID upload fails
@@ -226,6 +277,14 @@ When the robot tool points straight down (orientation `[0, 0, 1, 0]`), J5 approa
 - RAPID files written with `UTF8Encoding(false)` (no BOM) and CRLF line endings
 - Module cleanup: deletes all program modules (except BASE and user) before loading to prevent name conflicts
 - Controller write operations require `controller.Logon(UserInfo.DefaultUser)` and `Mastership.Request(controller.Rapid)`
+
+## Validation
+
+```powershell
+node --test tests/robotstudio-cli.test.mjs
+```
+
+The CLI tests use a local mock HTTP server; they do not establish RobotStudio runtime compatibility. The 2024 add-in build was checked with installed SDK assemblies, without deploying or executing robot motion. Build warnings identify existing deprecated simulation/Mastership APIs. 2025/2026 runtime checks remain outstanding.
 
 ## License
 

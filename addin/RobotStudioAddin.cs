@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -473,8 +474,9 @@ namespace RobotStudioMcpAddin
                                                 var childGc = child as GraphicComponent;
                                                 if (childGc == null) continue;
                                                 string n = childGc.Name ?? "";
+                                                int dummy;
                                                 if ((n.StartsWith("Caja_gr_") || n.StartsWith("Caja_pq_"))
-                                                    && int.TryParse(n.Substring(8), out _))
+                                                    && int.TryParse(n.Substring(8), out dummy))
                                                 {
                                                     toDelete.Add(childGc);
                                                 }
@@ -1061,8 +1063,25 @@ namespace RobotStudioMcpAddin
 
                     try
                     {
-                        module.SaveToFile(tempDir);
-                        string sourceCode = File.ReadAllText(tempFilePath, Encoding.UTF8);
+                        using (Mastership.Request(controller.Rapid))
+                        {
+                            module.SaveToFile(tempDir);
+                        }
+
+                        string[] writtenFiles = Directory.GetFiles(tempDir);
+                        if (writtenFiles.Length == 0)
+                        {
+                            statusCode = 500;
+                            return JsonConvert.SerializeObject(new ErrorResponse
+                            {
+                                Success = false,
+                                Error = "RAPID Source Error",
+                                Message = "Module.SaveToFile produced no file in '" + tempDir + "'."
+                            });
+                        }
+
+                        string actualFilePath = writtenFiles[0];
+                        string sourceCode = File.ReadAllText(actualFilePath, Encoding.UTF8);
 
                         statusCode = 200;
                         return JsonConvert.SerializeObject(new RapidSourceResponse
@@ -1070,7 +1089,7 @@ namespace RobotStudioMcpAddin
                             Success = true,
                             TaskName = taskName,
                             ModuleName = module.Name,
-                            FilePath = tempFilePath,
+                            FilePath = actualFilePath,
                             Code = sourceCode
                         }, Formatting.Indented);
                     }
@@ -1109,6 +1128,8 @@ namespace RobotStudioMcpAddin
                 using (controller)
                 {
                     var messages = new List<EventLogMessageData>();
+                    const int maxTotal = 50;
+                    const int maxPerCategory = 50;
                     EventLogCategory[] categories = controller.EventLog.GetCategories();
 
                     for (int c = 0; c < categories.Length; c++)
@@ -1116,8 +1137,12 @@ namespace RobotStudioMcpAddin
                         EventLogCategory cat = categories[c];
                         try
                         {
-                            foreach (EventLogMessage msg in cat.Messages)
+                            EventLogMessageCollection msgs = cat.Messages;
+                            int count = msgs.Count;
+                            int start = count > maxPerCategory ? count - maxPerCategory : 0;
+                            for (int i = count - 1; i >= start; i--)
                             {
+                                EventLogMessage msg = msgs[i];
                                 messages.Add(new EventLogMessageData
                                 {
                                     SequenceNumber = msg.SequenceNumber,
@@ -1136,9 +1161,9 @@ namespace RobotStudioMcpAddin
                         return b.SequenceNumber.CompareTo(a.SequenceNumber);
                     });
 
-                    if (messages.Count > 50)
+                    if (messages.Count > maxTotal)
                     {
-                        messages = messages.GetRange(0, 50);
+                        messages = messages.GetRange(0, maxTotal);
                     }
 
                     statusCode = 200;
